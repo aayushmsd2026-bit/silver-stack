@@ -49,6 +49,7 @@
       s.txns = Array.isArray(raw.txns) ? raw.txns : [];
       s.settings = deepMerge(DEFAULT_SETTINGS, raw.settings || {});
       s.updatedAt = raw.updatedAt || 0;
+      s.resetAt = raw.resetAt || 0;
     }
     return s;
   }
@@ -370,7 +371,7 @@
   }
   function backupPayload() {
     const settings = { ...state.settings, gist: { id: state.settings.gist.id } }; // never upload the token
-    return { app: 'stack', version: 1, updatedAt: state.updatedAt, txns: state.txns, settings };
+    return { app: 'stack', version: 1, updatedAt: state.updatedAt, resetAt: state.resetAt || 0, txns: state.txns, settings };
   }
   function scheduleGistPush() {
     if (!state.settings.gist.token) return;
@@ -433,6 +434,7 @@
     state.settings = deepMerge(DEFAULT_SETTINGS, data.settings || {});
     state.settings.gist = { ...keepGist, id: keepGist.id || data.settings?.gist?.id || '' };
     state.updatedAt = data.updatedAt || Date.now();
+    state.resetAt = data.resetAt || 0;
   }
 
   // ------------------------------------------------------------------ Google sign-in + Firestore sync
@@ -473,7 +475,20 @@
       const remote = await cloud.load();
       const local = state.txns, rtx = remote && Array.isArray(remote.txns) ? remote.txns : [];
       let msg = null;
-      if (!remote || (!rtx.length && local.length)) {
+      if (remote && (remote.resetAt || 0) > (state.resetAt || 0)) {
+        // The stack was reset on another device: drop everything from before the reset,
+        // but keep anything this device added after it.
+        const fresh = local.filter(t => (t.created || 0) > remote.resetAt && !rtx.some(r => txnKey(r) === txnKey(t)));
+        adopt(remote);
+        if (fresh.length) {
+          state.txns = [...state.txns, ...fresh];
+          save({ noSync: true });
+          await cloud.save(backupPayload());
+        } else {
+          save({ keepStamp: true, noSync: true });
+        }
+        msg = 'Your stack was reset from another device';
+      } else if (!remote || (!rtx.length && local.length)) {
         if (local.length || state.updatedAt) await cloud.save(backupPayload());
         if (local.length) msg = 'Your stack is now saved to your Google account';
       } else if (!local.length) {
@@ -1632,7 +1647,8 @@
       </div>
       <div class="form-caption" id="sStorage">${S.lastExport ? 'Last exported ' + ago(S.lastExport) + '. ' : ''}Tip: add this site to your Home Screen (Share → Add to Home Screen) so your device keeps its data safely.</div>
 
-      <div class="form-group mt"><button class="field action danger" id="sErase">Erase all data on this device</button></div>
+      <div class="form-group mt"><button class="field action danger" id="sErase">${cloudUser ? 'Reset everything on all devices' : 'Erase all data on this device'}</button></div>
+      ${cloudUser ? '<div class="form-caption">Deletes every purchase and setting from your Google account and every device signed in to it, for a fresh start. Export a backup first if you might want it later.</div>' : ''}
       <p class="footer-note">Stack · rates from FENEGOSIDA via a scheduled GitHub Action.<br>1 tola = 11.6638 g · 1 troy oz = 31.1035 g</p>`;
 
     openSheet(html, root => {
@@ -1687,7 +1703,25 @@
           adopt(data); save(); closeSheet(); render(); toast('Backup restored');
         } catch (err) { toast('Import failed: ' + err.message); }
       };
-      $('#sErase', root).onclick = () => {
+      $('#sErase', root).onclick = async () => {
+        if (cloudUser) {
+          if (!confirm('Reset everything? This deletes all purchases and settings from your Google account and from every device signed in to it.')) return;
+          if (!confirm('Are you sure? This cannot be undone.')) return;
+          const gist = state.settings.gist;
+          state.txns = [];
+          state.settings = deepMerge(DEFAULT_SETTINGS, {});
+          state.settings.gist = gist;
+          state.resetAt = Date.now();
+          save({ noSync: true });
+          try { localStorage.removeItem('stack.signinSnooze'); } catch (_) {}
+          try {
+            await cloud.save(backupPayload());
+            cloudStatus.lastSync = new Date().toISOString(); cloudStatus.error = null;
+            toast('Fresh start — reset on all your devices');
+          } catch (e) { toast('Reset here, but could not reach Google: ' + e.message); }
+          closeSheet(); render();
+          return;
+        }
         if (!confirm('Erase all transactions and settings on this device? Your GitHub backup, if any, is not touched.')) return;
         if (!confirm('Are you sure? This cannot be undone.')) return;
         state = { version: 1, txns: [], settings: deepMerge(DEFAULT_SETTINGS, {}), updatedAt: Date.now() };
