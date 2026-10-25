@@ -19,6 +19,7 @@
     gold:   { makingPct: 4, makingThreshold: 500, sdfPct: 0.5, buybackPct: 0, goal: TOLA * 5, alertBelow: null, alertAbove: null },
     gist: { token: '', id: '', lastSync: null },
     lastExport: null,
+    ignoreDupes: [],                // txnKeys the user confirmed are separate purchases
   };
 
   const FORMS = { bar: 'Bar', coin: 'Coin', granules: 'Granules', jewellery: 'Jewellery', utensil: 'Utensil', other: 'Other' };
@@ -480,11 +481,21 @@
         msg = `Loaded ${rtx.length} transactions from your Google account`;
       } else {
         const byId = new Map(rtx.map(t => [t.id, t]));
-        const added = local.filter(t => !byId.has(t.id));
+        // Also match by content: the same purchase typed on two devices before signing in
+        // has two different ids, and must not be counted twice.
+        const unmatched = new Map();
+        for (const t of rtx) unmatched.set(txnKey(t), (unmatched.get(txnKey(t)) || 0) + 1);
+        for (const t of local) if (byId.has(t.id)) unmatched.set(txnKey(byId.get(t.id)), unmatched.get(txnKey(byId.get(t.id))) - 1);
+        const added = local.filter(t => {
+          if (byId.has(t.id)) return false;
+          const k = txnKey(t), n = unmatched.get(k) || 0;
+          if (n > 0) { unmatched.set(k, n - 1); return false; }
+          return true;
+        });
         const newer = remote.updatedAt > state.updatedAt ? remote : backupPayload();
         if (remote.updatedAt > state.updatedAt) adopt(remote);
         if (added.length) {
-          for (const t of local) if (!byId.has(t.id)) byId.set(t.id, t);
+          for (const t of added) byId.set(t.id, t);
           state.txns = [...byId.values()];
           state.settings = deepMerge(state.settings, { ...newer.settings, gist: state.settings.gist });
           save({ noSync: true });
@@ -746,6 +757,7 @@
     let html = `<div class="page-head home-head"><div><div class="sub">${today}</div><h1>${greeting()}${name ? `, ${esc(name)}` : ''}</h1><p class="lede">${dailyLede(P)}</p></div><div class="head-actions">${actions}</div></div>`;
     html += signinBanner();
     html += alertsHtml();
+    html += dupesHtml();
 
     let hero;
     if (!P.any) {
@@ -851,6 +863,7 @@
     const hg = $('#homeGoogle', el); if (hg) hg.onclick = signInFlow;
     const hs = $('#homeSnooze', el); if (hs) hs.onclick = () => { try { localStorage.setItem('stack.signinSnooze', Date.now() + 7 * 864e5); } catch (_) {} renderHome(); };
     const gl = $('#homeGoals', el); if (gl) gl.onclick = () => openSettings('goals');
+    bindDupes(el);
   }
 
   function priceTile(m) {
@@ -862,6 +875,54 @@
       <div class="small ${cls(ch)}">${ch != null ? `${arrow(ch)} ${money(Math.abs(ch), { raw: true })} (${pct(ch / pr)})` : '&nbsp;'}</div>
       <div class="spark" id="spark-${m}"></div>
     </div>`;
+  }
+
+  /** Identity of a transaction by its details, independent of the random id. */
+  function txnKey(t) {
+    return [t.type, t.metal, t.date, (+t.grams).toFixed(2), Math.round(t.amount)].join('|');
+  }
+
+  function duplicateGroups() {
+    const ignore = new Set(state.settings.ignoreDupes || []);
+    const groups = new Map();
+    for (const t of sortedTxns()) {
+      const k = txnKey(t);
+      if (ignore.has(k)) continue;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(t);
+    }
+    return [...groups.values()].filter(g => g.length > 1);
+  }
+
+  function dupesHtml() {
+    const groups = duplicateGroups();
+    if (!groups.length) return '';
+    const extra = groups.reduce((n, g) => n + g.length - 1, 0);
+    const items = groups.map(g => {
+      const t = g[0];
+      return `<li>${weight(t.grams)} ${t.metal} ${t.type === 'sell' ? 'sold' : ''} · ${fmtDate(t.date)} · ${money(t.amount)} <b>×${g.length}</b></li>`;
+    }).join('');
+    return `<div class="notice dupes fade-in"><span>⚠️</span><div style="flex:1">
+      <b>${extra === 1 ? 'One entry looks' : `${extra} entries look`} like ${extra === 1 ? 'a duplicate' : 'duplicates'}.</b>
+      This usually happens when the same purchase was added on two devices before signing in.
+      <ul>${items}</ul>
+      <div class="dupe-actions"><button class="btn small" id="dupesRemove">Remove duplicates</button><button class="text-btn" id="dupesKeep">They're separate purchases</button></div>
+    </div></div>`;
+  }
+
+  function bindDupes(root) {
+    const rm = $('#dupesRemove', root), keep = $('#dupesKeep', root);
+    if (rm) rm.onclick = () => {
+      const drop = new Set();
+      for (const g of duplicateGroups()) for (const t of g.slice(1)) drop.add(t.id);
+      state.txns = state.txns.filter(t => !drop.has(t.id));
+      save(); render();
+      toast(`Removed ${drop.size} duplicate${drop.size > 1 ? 's' : ''}`);
+    };
+    if (keep) keep.onclick = () => {
+      state.settings.ignoreDupes = [...new Set([...(state.settings.ignoreDupes || []), ...duplicateGroups().map(g => txnKey(g[0]))])];
+      save(); render();
+    };
   }
 
   function alertsHtml() {
