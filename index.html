@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stack — Silver &amp; Gold</title>
+  <meta name="description" content="Personal silver and gold stack tracker with live FENEGOSIDA rates.">
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Stack">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar" id="topbar">
+      <div class="topbar-inner">
+        <span class="topbar-title" id="topbarTitle">Stack</span>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="view" id="view-home" data-title="Stack"></section>
+      <section class="view" id="view-silver" data-title="Silver" hidden></section>
+      <section class="view" id="view-gold" data-title="Gold" hidden></section>
+      <section class="view" id="view-ratio" data-title="Ratio" hidden></section>
+      <section class="view" id="view-insights" data-title="Insights" hidden></section>
+    </main>
+
+    <button class="fab" id="fab" aria-label="Add purchase">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+
+    <nav class="tabbar" aria-label="Sections">
+      <button class="tab active" data-view="home" aria-label="Stack">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Stack</span>
+      </button>
+      <button class="tab" data-view="silver" aria-label="Silver">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17h16l-2.5-6h-11zM7.5 11 9 7h6l1.5 4"/></svg>
+        <span>Silver</span>
+      </button>
+      <button class="tab" data-view="gold" aria-label="Gold">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/></svg>
+        <span>Gold</span>
+      </button>
+      <button class="tab" data-view="ratio" aria-label="Gold to silver ratio">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M5 8h14M5 8l-2.5 6a3 3 0 0 0 5 0zM19 8l-2.5 6a3 3 0 0 0 5 0zM8 20h8"/></svg>
+        <span>Ratio</span>
+      </button>
+      <button class="tab" data-view="insights" aria-label="Insights">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span>Insights</span>
+      </button>
+    </nav>
+  </div>
+
+  <div class="sheet-backdrop" id="backdrop" hidden></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden>
+    <div class="sheet-grabber"></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

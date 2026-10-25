@@ -1,0 +1,40 @@
+name: Update prices
+
+on:
+  schedule:
+    # FENEGOSIDA publishes around 10–11 AM Nepal time (04:15–05:15 UTC).
+    - cron: "*/20 3-7 * * *"   # every 20 min through the publishing window
+    - cron: "17 */2 * * *"     # every 2 h otherwise (international spot)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["scripts/fetch_prices.py", ".github/workflows/prices.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch rates
+        run: python scripts/fetch_prices.py
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- data; then
+            echo "No change"; exit 0
+          fi
+          git config user.name "price-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "Update prices $(TZ=Asia/Kathmandu date '+%Y-%m-%d %H:%M NPT')"
+          git pull --rebase origin main
+          git push
