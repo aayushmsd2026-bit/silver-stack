@@ -575,15 +575,79 @@
   function renderNav() {
     const box = $('#navUser');
     if (!box) return;
+    const install = canOfferInstall() ? `<button class="nav-install" id="navInstall">${ICON.download}<span>Install app</span></button>` : '';
     if (cloudUser) {
-      box.innerHTML = `<button class="nav-user-btn" id="navUserBtn">${avatar(34)}<span class="li-main"><span class="li-title">${esc(cloudUser.displayName || 'Account')}</span><span class="li-sub">${cloudStatus.error ? 'Sync issue' : 'Synced with Google'}</span></span></button>`;
+      box.innerHTML = install + `<button class="nav-user-btn" id="navUserBtn">${avatar(34)}<span class="li-main"><span class="li-title">${esc(cloudUser.displayName || 'Account')}</span><span class="li-sub">${cloudStatus.error ? 'Sync issue' : 'Synced with Google'}</span></span></button>`;
       $('#navUserBtn').onclick = () => openSettings();
     } else if (cloud && cloud.enabled && cloudReady) {
-      box.innerHTML = `<button class="btn gbtn small block" id="navSignin">${G_ICON}<span>Sign in with Google</span></button>`;
+      box.innerHTML = install + `<button class="btn gbtn small block" id="navSignin">${G_ICON}<span>Sign in with Google</span></button>`;
       $('#navSignin').onclick = signInFlow;
     } else {
-      box.innerHTML = '';
+      box.innerHTML = install;
     }
+    const ni = $('#navInstall'); if (ni) ni.onclick = installFlow;
+  }
+
+  // ------------------------------------------------------------------ install as an app (PWA)
+  // Android/desktop Chromium fire `beforeinstallprompt`, which lets a button open the real
+  // install dialog. iOS has no such API, so there we show how to use Share → Add to Home Screen.
+  let installEvt = null;
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = () => /android/i.test(navigator.userAgent);
+  const canOfferInstall = () => !isStandalone() && (!!installEvt || isIOS() || isAndroid());
+
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
+  window.addEventListener('appinstalled', () => { installEvt = null; toast('Stack is installed — find it on your home screen'); render(); });
+
+  async function installFlow() {
+    if (installEvt) {
+      const evt = installEvt;
+      installEvt = null;
+      evt.prompt();
+      // The event is single-use; Chrome fires a fresh one later if the user dismissed it.
+      const { outcome } = await evt.userChoice;
+      if (outcome === 'accepted') toast('Installing Stack…');
+      render();
+      return;
+    }
+    openInstallGuide();
+  }
+
+  function openInstallGuide() {
+    const ios = isIOS();
+    const inSafari = ios && !/crios|fxios|edgios/i.test(navigator.userAgent);
+    const SHARE = '<svg class="guide-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+    const PLUS = '<svg class="guide-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+    const DOTS = '<svg class="guide-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>';
+    const steps = ios ? [
+      [SHARE, `Tap the <b>Share</b> button ${inSafari ? 'in Safari\'s toolbar (bottom of the screen on iPhone)' : 'at the top-right of the address bar'}.`],
+      [PLUS, 'Scroll down and tap <b>Add to Home Screen</b>.'],
+      ['<span class="guide-num">✓</span>', 'Tap <b>Add</b>. Stack appears on your home screen and opens full-screen like any app.'],
+    ] : [
+      [DOTS, 'Open your browser\'s <b>menu</b> (⋮ at the top-right).'],
+      [PLUS, 'Tap <b>Install app</b> or <b>Add to Home screen</b>.'],
+      ['<span class="guide-num">✓</span>', 'Confirm. Stack appears with your other apps.'],
+    ];
+    openSheet(`
+      <div class="sheet-head"><span></span><h2>Install Stack</h2><button class="text-btn r" id="gDone">Done</button></div>
+      <div class="guide-hero"><img src="icons/apple-touch-icon.png" alt="" width="72" height="72"><div><b>Stack</b><span>Silver &amp; gold tracker</span></div></div>
+      <ol class="guide">${steps.map(([ico, txt]) => `<li>${ico}<span>${txt}</span></li>`).join('')}</ol>
+      <div class="form-caption">${ios ? 'Apple only allows installing websites from the Share menu, so this one step is done by you. ' : ''}Once installed, Stack opens without the browser bars, works offline, and keeps your data on this phone.</div>
+      ${ios ? '<div class="guide-arrow" aria-hidden="true">↓</div>' : ''}`, root => { $('#gDone', root).onclick = closeSheet; });
+  }
+
+  function installBanner() {
+    if (!canOfferInstall()) return '';
+    let snoozed = 0;
+    try { snoozed = +localStorage.getItem('stack.installSnooze') || 0; } catch (_) {}
+    if (Date.now() < snoozed) return '';
+    return `<div class="card install fade-in">
+      <img class="install-icon" src="icons/apple-touch-icon.png" alt="" width="48" height="48">
+      <div class="install-text"><b>Get the Stack app</b><span>Opens full-screen from your home screen and works offline.</span></div>
+      <button class="btn small" id="homeInstall">Install</button>
+      <button class="install-x" id="installSnooze" aria-label="Not now">✕</button>
+    </div>`;
   }
 
   function bindAccount(root) {
@@ -607,6 +671,7 @@
     eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     eyeOff: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6"/></svg>',
     refresh: '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>',
+    download: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
     chev: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
   };
 
@@ -771,6 +836,7 @@
 
     let html = `<div class="page-head home-head"><div><div class="sub">${today}</div><h1>${greeting()}${name ? `, ${esc(name)}` : ''}</h1><p class="lede">${dailyLede(P)}</p></div><div class="head-actions">${actions}</div></div>`;
     html += signinBanner();
+    html += installBanner();
     html += alertsHtml();
     html += dupesHtml();
 
@@ -879,6 +945,8 @@
     const hs = $('#homeSnooze', el); if (hs) hs.onclick = () => { try { localStorage.setItem('stack.signinSnooze', Date.now() + 7 * 864e5); } catch (_) {} renderHome(); };
     const gl = $('#homeGoals', el); if (gl) gl.onclick = () => openSettings('goals');
     bindDupes(el);
+    const hi = $('#homeInstall', el); if (hi) hi.onclick = installFlow;
+    const hx = $('#installSnooze', el); if (hx) hx.onclick = () => { try { localStorage.setItem('stack.installSnooze', Date.now() + 14 * 864e5); } catch (_) {} renderHome(); };
   }
 
   function priceTile(m) {
@@ -1602,6 +1670,12 @@
       <div class="form-label">Account</div>
       <div id="sAccount">${accountHtml()}</div>
 
+      <div class="form-label">App</div>
+      <div class="form-group">${isStandalone()
+        ? '<div class="field"><label>Stack app</label><span class="small muted" style="margin-left:auto">Installed ✓</span></div>'
+        : '<button class="field action" id="sInstall">Install Stack as an app</button>'}</div>
+      ${isStandalone() ? '' : '<div class="form-caption">Adds Stack to your home screen so it opens full-screen like a regular app.</div>'}
+
       <div class="form-label">Display</div>
       <div class="form-group">
         <div class="field"><label>Weight unit</label><div class="seg" id="sUnit" style="margin-left:auto"><button data-v="g">Grams</button><button data-v="tola">Tola</button></div></div>
@@ -1654,6 +1728,7 @@
     openSheet(html, root => {
       const set = (sel, v) => $$(sel + ' button', root).forEach(b => b.classList.toggle('on', b.dataset.v === v));
       bindAccount(root);
+      const si = $('#sInstall', root); if (si) si.onclick = () => { closeSheet(); setTimeout(installFlow, 350); };
       set('#sUnit', S.unit); set('#sBasis', S.chargeBasis);
       $$('#sUnit button', root).forEach(b => b.onclick = () => { S.unit = b.dataset.v; set('#sUnit', S.unit); save(); });
       $$('#sBasis button', root).forEach(b => b.onclick = () => { S.chargeBasis = b.dataset.v; set('#sBasis', S.chargeBasis); save(); });
@@ -1782,6 +1857,7 @@
 
   applyPrefs();
   go((location.hash || '').slice(1) || 'home', { noHash: true });
+  if (location.hash === '#add') { history.replaceState(null, '', location.pathname); openTxnSheet(); } // app-icon shortcut
   refreshMarket();
   if (state.settings.gist.token) gistSync().then(r => { if (r === 'pulled') { render(); toast('Synced from GitHub'); } }).catch(() => {});
 
