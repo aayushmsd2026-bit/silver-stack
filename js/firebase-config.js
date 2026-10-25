@@ -4,8 +4,8 @@
 // (each Google account can only read and write its own stack).
 // Leave apiKey empty to keep cloud sync switched off.
 export default {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  appId: '',
+  apiKey: 'AIzaSyC7GU69WIseQRXCc8CRLhfTX_qPY4Au3mk',
+  authDomain: 'silver-stack.firebaseapp.com',
+  projectId: 'silver-stack',
+  appId: '1:352794772807:web:fdc8d483d3f31664303862',
 };
