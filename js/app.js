@@ -437,14 +437,14 @@
   // ------------------------------------------------------------------ Google sign-in + Firestore sync
   // js/cloud.js (a module) exposes window.StackCloud. Whole-document sync: newest wins, and the
   // first sync on a device merges transactions by id so signing in can never lose a purchase.
-  let cloud = null, cloudUser = null, cloudUnwatch = null, cloudTimer = null;
+  let cloud = null, cloudUser = null, cloudReady = false, cloudUnwatch = null, cloudTimer = null;
   const cloudStatus = { lastSync: null, error: null, busy: false };
 
   function initCloud() {
     cloud = window.StackCloud;
     if (!cloud || !cloud.enabled) return;
     cloud.onUser(async user => {
-      cloudUser = user;
+      cloudUser = user; cloudReady = true;
       if (cloudUnwatch) { cloudUnwatch(); cloudUnwatch = null; }
       if (user) {
         try {
@@ -540,12 +540,29 @@
       <div class="form-caption">Changes you make on any device signed in to this account appear everywhere within seconds.</div>`;
   }
 
+  async function signInFlow() {
+    if (!cloud || !cloud.enabled) return openSettings();
+    try { await cloud.signIn(); }
+    catch (e) { toast(e.code === 'auth/unauthorized-domain' ? 'Add this site to Firebase → Authentication → Authorized domains' : 'Sign-in failed: ' + (e.code || e.message)); }
+  }
+
+  function renderNav() {
+    const box = $('#navUser');
+    if (!box) return;
+    if (cloudUser) {
+      box.innerHTML = `<button class="nav-user-btn" id="navUserBtn">${avatar(34)}<span class="li-main"><span class="li-title">${esc(cloudUser.displayName || 'Account')}</span><span class="li-sub">${cloudStatus.error ? 'Sync issue' : 'Synced with Google'}</span></span></button>`;
+      $('#navUserBtn').onclick = () => openSettings();
+    } else if (cloud && cloud.enabled && cloudReady) {
+      box.innerHTML = `<button class="btn gbtn small block" id="navSignin">${G_ICON}<span>Sign in with Google</span></button>`;
+      $('#navSignin').onclick = signInFlow;
+    } else {
+      box.innerHTML = '';
+    }
+  }
+
   function bindAccount(root) {
     const g = $('#sGoogle', root);
-    if (g) g.onclick = async () => {
-      try { await cloud.signIn(); }
-      catch (e) { toast(e.code === 'auth/unauthorized-domain' ? 'Add this site to Firebase → Authentication → Authorized domains' : 'Sign-in failed: ' + (e.code || e.message)); }
-    };
+    if (g) g.onclick = signInFlow;
     const o = $('#sSignOut', root);
     if (o) o.onclick = async () => {
       if (!confirm('Sign out? Your stack stays on this device, but stops syncing.')) return;
@@ -617,19 +634,122 @@
   }
 
   // ------------------------------------------------------------------ HOME
+  /** Two-column page layout. Blocks are [order, html]; on phones they interleave by order. */
+  function layout(main, side) {
+    const blk = ([o, h]) => h ? `<section class="blk" style="order:${o}">${h}</section>` : '';
+    return `<div class="layout"><div class="col main">${main.map(blk).join('')}</div><div class="col side">${side.map(blk).join('')}</div></div>`;
+  }
+
+  function greeting() {
+    const h = +new Date().toLocaleString('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kathmandu' });
+    return h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  }
+  const firstName = () => (cloudUser?.displayName || '').trim().split(/\s+/)[0] || '';
+  function avatar(size = 40) {
+    const u = cloudUser;
+    if (!u) return '';
+    const initial = esc((firstName() || u.email || '?')[0].toUpperCase());
+    return u.photoURL
+      ? `<img class="avatar" src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer" style="width:${size}px;height:${size}px">`
+      : `<span class="avatar" style="width:${size}px;height:${size}px">${initial}</span>`;
+  }
+
+  function dailyLede(P) {
+    const parts = [];
+    for (const m of METALS) {
+      const r = rate(m), pr = prevRate(m);
+      if (r && pr && r !== pr) parts.push(`${NAME[m]} ${r > pr ? 'up' : 'down'} <span class="${cls(r - pr)}">${(Math.abs(r / pr - 1) * 100).toFixed(2)}%</span>`);
+    }
+    let s = parts.length ? parts.join(', ') + ' since the last rate.' : (market.prices ? 'Rates are unchanged from the last update.' : 'Fetching today\'s rates…');
+    if (P.has && P.unrealized != null) s += ` Your stack is ${P.unrealized >= 0 ? 'up' : 'down'} <span class="${cls(P.unrealized)}">${money(Math.abs(P.unrealized))}</span> overall.`;
+    return s;
+  }
+
+  function signinBanner() {
+    if (!cloud || !cloud.enabled || !cloudReady || cloudUser) return '';
+    let snoozed = 0;
+    try { snoozed = +localStorage.getItem('stack.signinSnooze') || 0; } catch (_) {}
+    if (Date.now() < snoozed) return '';
+    return `<div class="card signin fade-in">
+      <div class="signin-art" aria-hidden="true">${G_ICON}</div>
+      <div class="signin-text">
+        <h2>Keep your stack in sync</h2>
+        <p>Sign in with Google to back up your holdings and see them on your phone and laptop, updated live.</p>
+      </div>
+      <div class="signin-actions">
+        <button class="btn gbtn" id="homeGoogle">${G_ICON}<span>Sign in with Google</span></button>
+        <button class="text-btn muted-link" id="homeSnooze">Not now</button>
+      </div>
+    </div>`;
+  }
+
+  function glanceHtml(P) {
+    if (!P.any) return '';
+    const sv = P.silver.value || 0, gv = P.gold.value || 0;
+    return `<div class="card">
+      <h3>At a glance</h3>
+      <div class="row mt" style="align-items:center">
+        ${Charts.ring([{ value: sv, color: color('silver') }, { value: gv, color: color('gold') }], { size: 104, stroke: 12, label: P.value ? Math.round(sv / P.value * 100) + '%' : '—', sub: 'silver' })}
+        <div class="stack-v" style="flex:1;min-width:0">
+          <div class="kv"><span class="k"><span class="metal-dot silver"></span> Silver</span><span class="v num">${weight(P.silver.grams)}</span></div>
+          <div class="kv"><span class="k"><span class="metal-dot gold"></span> Gold</span><span class="v num">${weight(P.gold.grams)}</span></div>
+        </div>
+      </div>
+      <div class="kv mt-s"><span class="k">Making charge + SDF paid</span><span class="v num">${money(P.making + P.sdf)}</span></div>
+      <div class="kv"><span class="k">Annualised return</span><span class="v num ${cls(P.xirr)}">${P.xirr != null ? pct(P.xirr, 1) : '—'}</span></div>
+      ${P.realized ? `<div class="kv"><span class="k">Realised P&amp;L</span><span class="v num ${cls(P.realized)}">${money(P.realized, { sign: true })}</span></div>` : ''}
+    </div>`;
+  }
+
+  function snapshotHtml() {
+    if (!market.prices) return '';
+    const rows = METALS.map(m => {
+      const st = stats(m), r = rate(m), pr = prevRate(m);
+      const d1 = r && pr ? r / pr - 1 : null;
+      const range = st ? Math.max(0, Math.min(1, (r - st.lo) / ((st.hi - st.lo) || 1))) : null;
+      return `<div class="snap-row">
+        <div class="snap-head"><span class="metal-dot ${m}"></span><b>${NAME[m]}</b><span class="muted small num">${r ? money(r, { raw: true }) : '—'}</span></div>
+        <div class="snap-cells">
+          ${[['1D', d1], ['1M', st?.m1], ['3M', st?.m3], ['1Y', st?.y1]].map(([k, v]) => `<div><span class="label">${k}</span><span class="num ${cls(v)}">${v == null ? '—' : pct(v, 1)}</span></div>`).join('')}
+        </div>
+        ${range != null ? `<div class="range"><span class="small muted num">${Charts.compact(st.lo)}</span><div class="range-track"><i style="left:${(range * 100).toFixed(1)}%"></i></div><span class="small muted num">${Charts.compact(st.hi)}</span></div>
+        <div class="small muted" style="margin-top:6px">${st.spanDays >= 360 ? '52-week' : st.spanDays + '-day'} range · ${pct(st.fromHi, 1)} from high</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="section-title"><span>Market snapshot</span></div><div class="card snapshot">${rows}</div>`;
+  }
+
+  function goalsHtml(P) {
+    if (!P.any) return '';
+    const rows = METALS.map(m => {
+      const goal = state.settings[m].goal, g = P[m].grams;
+      if (!goal) return '';
+      const prog = Math.min(1, g / goal);
+      return `<div class="goal-row">
+        <div class="row small"><span><span class="metal-dot ${m}"></span> ${NAME[m]} · ${weight(g)} of ${weight(goal)}</span><b class="num">${Math.round(prog * 100)}%</b></div>
+        <div class="bar-track mt-s"><i style="width:${prog * 100}%;background:${m === 'gold' ? 'var(--accent)' : 'var(--text)'}"></i></div>
+        <div class="small muted" style="margin-top:6px">${g >= goal ? 'Goal reached 🎉' : `${weight(goal - g)} to go${rate(m) ? ' · about ' + money((goal - g) / TOLA * rate(m), { raw: true }) : ''}`}</div>
+      </div>`;
+    }).join('');
+    return rows ? `<div class="section-title"><span>Goals</span><button class="link" id="homeGoals">Edit</button></div><div class="card goals">${rows}</div>` : '';
+  }
+
   function renderHome() {
     const el = $('#view-home');
     const P = portfolio();
     const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    const name = firstName();
     const actions = `
       <button class="icon-btn" id="btnHide" aria-label="Hide values">${state.settings.hideValues ? ICON.eyeOff : ICON.eye}</button>
-      <button class="icon-btn" id="btnSettings" aria-label="Settings">${ICON.gear}</button>`;
+      ${cloudUser ? `<button class="avatar-btn" id="btnSettings" aria-label="Account and settings">${avatar(40)}</button>` : `<button class="icon-btn" id="btnSettings" aria-label="Settings">${ICON.gear}</button>`}`;
 
-    let html = head('Stack', today, actions);
+    let html = `<div class="page-head home-head"><div><div class="sub">${today}</div><h1>${greeting()}${name ? `, ${esc(name)}` : ''}</h1><p class="lede">${dailyLede(P)}</p></div><div class="head-actions">${actions}</div></div>`;
+    html += signinBanner();
     html += alertsHtml();
 
+    let hero;
     if (!P.any) {
-      html += `<div class="card empty fade-in">
+      hero = `<div class="card empty fade-in">
         <svg class="art" viewBox="0 0 84 84" aria-hidden="true">
           <defs><linearGradient id="ag" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#45413C" stop-opacity=".35"/><stop offset="1" stop-color="#45413C" stop-opacity=".8"/></linearGradient>
           <linearGradient id="au" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E2A77A" stop-opacity=".7"/><stop offset="1" stop-color="#E2A77A"/></linearGradient></defs>
@@ -641,65 +761,96 @@
       </div>`;
     } else {
       const dayPct = P.value - P.dayChange > 0 ? P.dayChange / (P.value - P.dayChange) : 0;
-      html += `<div class="card hero fade-in">
-        <div class="label">Stack value</div>
-        <div class="big num">${money(P.value)}</div>
-        <div class="hero-meta">
-          <span class="pill ${cls(P.unrealized)}"><span class="sensitive">${arrow(P.unrealized)} ${money(P.unrealized, { sign: true, raw: true })}</span>&nbsp;${pct(P.unrealizedPct)}</span>
-          ${P.dayChange ? `<span class="small ${cls(P.dayChange)}">${money(P.dayChange, { sign: true })} today (${pct(dayPct)})</span>` : ''}
+      hero = `<div class="card hero fade-in">
+        <div class="hero-grid">
+          <div>
+            <div class="label">Stack value</div>
+            <div class="big num">${money(P.value)}</div>
+            <div class="hero-meta">
+              <span class="pill ${cls(P.unrealized)}"><span class="sensitive">${arrow(P.unrealized)} ${money(P.unrealized, { sign: true, raw: true })}</span>&nbsp;${pct(P.unrealizedPct)}</span>
+              ${P.dayChange ? `<span class="small ${cls(P.dayChange)}">${money(P.dayChange, { sign: true })} today (${pct(dayPct)})</span>` : ''}
+            </div>
+          </div>
+          <div class="hero-chart-wrap"><div class="small muted" id="heroReadout">Value over the last 3 months</div><div class="chart hero-chart" id="heroChart"></div></div>
         </div>
         <div class="hero-split">
           <div class="mini"><div class="label">Cost basis</div><div class="v num">${money(P.cost)}</div></div>
           <div class="mini"><div class="label">If sold today</div><div class="v num">${money(P.buybackValue)}</div></div>
+          <div class="mini"><div class="label">Total weight</div><div class="v num">${weight(P.silver.grams + P.gold.grams)}</div></div>
+          <div class="mini"><div class="label">Purchases</div><div class="v num">${state.txns.filter(t => t.type === 'buy').length}</div></div>
         </div>
       </div>`;
     }
 
-    // Rates
-    html += `<div class="section-title"><span>Today's rates</span><button class="link" id="btnRefresh">Refresh</button></div>
+    const rates = `<div class="section-title"><span>Today's rates</span><button class="link" id="btnRefresh">Refresh</button></div>
       <div class="grid two">${METALS.map(priceTile).join('')}</div>
-      <p class="footer-note" style="margin-top:10px">${sourceLine()}</p>`;
+      <p class="footer-note" style="margin-top:14px">${sourceLine()}</p>`;
 
-    // Ratio mini
     const ratio = rate('gold') && rate('silver') ? rate('gold') / rate('silver') : null;
+    let ratioCard = '';
     if (ratio) {
       const ii = market.prices?.intl;
-      const zone = ratioZone(ii?.xau && ii?.xag ? ii.xau / ii.xag : ratio);
-      html += `<div class="card tight mt price-tile" data-go="ratio">
+      const sig = ii?.xau && ii?.xag ? ii.xau / ii.xag : ratio;
+      const zone = ratioZone(sig);
+      const gp = Math.max(0, Math.min(1, (sig - 30) / 90));
+      ratioCard = `<div class="card price-tile" data-go="ratio">
         <div class="row"><div><div class="label">Gold ÷ Silver ratio</div><div class="mid num">${ratio.toFixed(1)}</div></div>
         <div class="row" style="gap:6px"><span class="pill">${zone.short}</span><span class="chev">${ICON.chev}</span></div></div>
+        <div class="gauge" style="margin:18px 0 8px"><div class="needle" style="left:${(gp * 100).toFixed(1)}%"></div></div>
+        <div class="gauge-labels"><span>Gold cheap</span><span>Silver cheap</span></div>
       </div>`;
     }
 
+    let holdings = '', recent = '';
     if (P.any) {
-      html += `<div class="section-title"><span>Holdings</span></div><div class="list">`;
-      for (const m of METALS) {
+      holdings = `<div class="section-title"><span>Holdings</span></div><div class="list">${METALS.filter(m => P[m].buys).map(m => {
         const p = P[m];
-        if (!p.buys) continue;
-        html += `<button class="list-item" data-go="${m}">
+        return `<button class="list-item" data-go="${m}">
           <div class="li-icon ${m}">${m === 'gold' ? 'Au' : 'Ag'}</div>
           <div class="li-main"><div class="li-title">${NAME[m]}</div><div class="li-sub">${weight(p.grams)} · avg ${money(p.avgTola, { raw: true })}/tola</div></div>
           <div class="li-right"><div class="t num">${money(p.value)}</div><div class="s ${cls(p.unrealized)}">${pct(p.unrealizedPct)}</div></div>
         </button>`;
-      }
-      html += `</div>`;
-
-      const recent = sortedTxns().reverse().slice(0, 5);
-      html += `<div class="section-title"><span>Recent activity</span></div><div class="list">${recent.map(txnRow).join('')}</div>`;
+      }).join('')}</div>`;
+      recent = `<div class="section-title"><span>Recent activity</span><button class="link" data-go="insights">Insights</button></div><div class="list">${sortedTxns().reverse().slice(0, 6).map(txnRow).join('')}</div>`;
     }
+
+    html += layout(
+      [[1, hero], [2, rates], [5, holdings], [6, recent]],
+      [[3, ratioCard], [4, glanceHtml(P)], [7, snapshotHtml()], [8, goalsHtml(P)]],
+    );
 
     html += backupNudge();
     html += `<p class="footer-note">${cloudUser ? `Synced with your Google account (${esc(cloudUser.email || '')}).` : `Your holdings are stored only on this device${state.settings.gist.token ? ' and in your private GitHub Gist' : ''}.`}<br>Rates: Federation of Nepal Gold &amp; Silver Dealers' Association.</p>`;
 
     el.innerHTML = html;
     METALS.forEach(m => { const s = $(`#spark-${m}`, el); if (s) Charts.spark(s, series(m, '1M').map(r => r[1]), color(m)); });
+
+    const hc = $('#heroChart', el);
+    if (hc) {
+      const vh = valueHistory();
+      const from = vh.value.length ? vh.value[vh.value.length - 1][0] - 92 * 864e5 : 0;
+      const val = vh.value.filter(r => r[0] >= from), cost = vh.cost.filter(r => r[0] >= from);
+      const ro = $('#heroReadout', el);
+      Charts.line(hc, {
+        series: [{ data: val, color: color('accent'), fill: true }, { data: cost, color: color('text-3'), width: 1.4, dash: '4 3' }],
+        xAxis: false, yAxis: false, empty: 'Your value chart fills in as daily rates arrive',
+        onScrub: pts => {
+          if (!pts) { ro.textContent = 'Value over the last 3 months'; return; }
+          ro.innerHTML = `${new Date(pts[0][0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${money(pts[0][1])}`;
+        },
+      });
+    }
+
     $('#btnSettings', el).onclick = () => openSettings();
     $('#btnHide', el).onclick = () => { state.settings.hideValues = !state.settings.hideValues; save(); applyPrefs(); renderHome(); };
     $('#btnRefresh', el).onclick = () => refreshMarket(true);
     const first = $('#btnFirst', el); if (first) first.onclick = () => openTxnSheet();
     $$('[data-go]', el).forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
     bindTxnRows(el);
-    const nb = $('#nudgeExport', el); if (nb) nb.onclick = () => openSettings();
+    const nb = $('#nudgeExport', el); if (nb) nb.onclick = () => (cloud && cloud.enabled ? signInFlow() : openSettings());
+    const hg = $('#homeGoogle', el); if (hg) hg.onclick = signInFlow;
+    const hs = $('#homeSnooze', el); if (hs) hs.onclick = () => { try { localStorage.setItem('stack.signinSnooze', Date.now() + 7 * 864e5); } catch (_) {} renderHome(); };
+    const gl = $('#homeGoals', el); if (gl) gl.onclick = () => openSettings('goals');
   }
 
   function priceTile(m) {
@@ -725,7 +876,7 @@
   }
 
   function backupNudge() {
-    if (!state.txns.length || state.settings.gist.token || cloudUser) return '';
+    if (!state.txns.length || state.settings.gist.token || cloudUser || (cloud && cloud.enabled)) return '';
     const last = state.settings.lastExport;
     if (last && Date.now() - new Date(last).getTime() < 30 * 864e5) return '';
     return `<div class="notice info mt"><span>☁️</span><div>Your stack lives only in this browser. <button class="text-btn" id="nudgeExport">Sign in with Google</button> to back it up and sync it across your devices.</div></div>`;
@@ -742,7 +893,7 @@
 
     let html = head(NAME[m], 'FENEGOSIDA · per tola', `<button class="icon-btn" id="btnRef-${m}" aria-label="Refresh">${ICON.refresh}</button>`);
 
-    html += `<div class="card fade-in">
+    const chartB = `<div class="card fade-in">
       <div class="chart-readout" id="readout-${m}"></div>
       <div class="chart" id="chart-${m}"></div>
       <div class="mt-s">${rangeSeg(m)}</div>
@@ -751,7 +902,7 @@
 
     // Rates grid
     const g10 = market.prices?.[m]?.g10 || (r ? r / TOLA * 10 : null);
-    html += `<div class="section-title"><span>Rates</span></div>
+    const ratesB = `<div class="section-title"><span>Rates</span></div>
       <div class="stat-grid four">
         <div class="stat"><div class="label">Per tola</div><div class="v num">${r ? money(r, { raw: true }) : '—'}</div><div class="s ${cls(ch)}">${ch != null ? pct(ch / pr) + ' today' : '&nbsp;'}</div></div>
         <div class="stat"><div class="label">Per 10 g</div><div class="v num">${g10 ? money(g10, { raw: true }) : '—'}</div><div class="s muted">${r ? money(r / TOLA, { raw: true, dec: true }) + ' / g' : '&nbsp;'}</div></div>
@@ -759,8 +910,9 @@
         <div class="stat"><div class="label">Yesterday</div><div class="v num">${pr ? money(pr, { raw: true }) : '—'}</div><div class="s muted">${ch != null ? money(ch, { sign: true, raw: true }) : '&nbsp;'}</div></div>
       </div>`;
 
+    let perfB = '';
     if (st) {
-      html += `<div class="section-title"><span>Performance</span></div>
+      perfB = `<div class="section-title"><span>Performance</span></div>
       <div class="card tight">
         <div class="stat-grid four" style="gap:0">
           ${[['1 week', st.w1], ['1 month', st.m1], ['3 months', st.m3], ['1 year', st.y1]].map(([k, v]) => `<div style="padding:6px 0"><div class="label">${k}</div><div class="v num ${cls(v)}" style="font-weight:650;font-size:17px">${v == null ? '—' : pct(v)}</div></div>`).join('')}
@@ -772,8 +924,9 @@
     }
 
     const ii = intlImplied(m);
+    let intlB = '';
     if (ii) {
-      html += `<div class="section-title"><span>International</span></div>
+      intlB = `<div class="section-title"><span>International</span></div>
       <div class="card tight">
         <div class="kv"><span class="k">Spot (${m === 'gold' ? 'XAU' : 'XAG'})</span><span class="v num">$${ii.usd.toLocaleString('en-US', { maximumFractionDigits: 2 })} / oz</span></div>
         <div class="kv"><span class="k">USD → NPR</span><span class="v num">${ii.usdnpr.toFixed(2)}</span></div>
@@ -784,13 +937,13 @@
     }
 
     // Position
-    html += `<div class="section-title"><span>Your ${NAME[m].toLowerCase()}</span></div>`;
+    let posB = `<div class="section-title"><span>Your ${NAME[m].toLowerCase()}</span></div>`, txnB = '';
     if (!p.buys) {
-      html += `<div class="card empty"><h2>No ${NAME[m].toLowerCase()} yet</h2><p>Log a purchase to see your position, break-even and profit.</p><button class="btn" data-add="${m}">Add ${NAME[m].toLowerCase()}</button></div>`;
+      posB += `<div class="card empty"><h2>No ${NAME[m].toLowerCase()} yet</h2><p>Log a purchase to see your position, break-even and profit.</p><button class="btn" data-add="${m}">Add ${NAME[m].toLowerCase()}</button></div>`;
     } else {
       const goal = state.settings[m].goal;
       const prog = goal ? Math.min(1, p.grams / goal) : 0;
-      html += `<div class="card">
+      posB += `<div class="card">
         <div class="row" style="align-items:center">
           <div class="stack-v">
             <div class="label">Holding</div>
@@ -814,10 +967,11 @@
         </div>
       </div>`;
 
-      html += `<div class="section-title"><span>Transactions</span><button class="link" data-add="${m}">Add</button></div>
+      txnB = `<div class="section-title"><span>Transactions</span><button class="link" data-add="${m}">Add</button></div>
         <div class="list">${sortedTxns(m).reverse().map(txnRow).join('')}</div>`;
     }
 
+    html += layout([[1, chartB], [5, posB], [6, txnB]], [[2, ratesB], [3, perfB], [4, intlB]]);
     html += `<p class="footer-note">${sourceLine()}</p>`;
     el.innerHTML = html;
 
@@ -883,7 +1037,7 @@
     const signal = intlRatio || ratio;
     const zone = ratioZone(signal);
     const gaugePos = Math.max(0, Math.min(1, (signal - 30) / (120 - 30)));
-    html += `<div class="card fade-in">
+    const heroB = `<div class="card fade-in">
       <div class="label">Nepal ratio (FENEGOSIDA)</div>
       <div class="big num">${ratio.toFixed(2)}</div>
       <div class="small muted">1 tola of gold buys ${ratio.toFixed(1)} tola of silver</div>
@@ -893,21 +1047,21 @@
       <div class="notice ${zone.pos === 'neutral' ? 'info' : ''} mt"><div><b>${zone.short}.</b> ${zone.text}</div></div>
     </div>`;
 
-    html += `<div class="stat-grid four mt">
+    const statsB = `<div class="stat-grid four">
       <div class="stat"><div class="label">International</div><div class="v num">${intlRatio ? intlRatio.toFixed(2) : '—'}</div><div class="s muted">XAU ÷ XAG spot</div></div>
       <div class="stat"><div class="label">Your history avg</div><div class="v num">${avg ? avg.toFixed(2) : '—'}</div><div class="s muted">${all.length} days tracked</div></div>
       <div class="stat"><div class="label">Percentile</div><div class="v num">${pctile != null ? Math.round(pctile * 100) + 'th' : '—'}</div><div class="s muted">vs tracked history</div></div>
       <div class="stat"><div class="label">Long-run normal</div><div class="v num">55–80</div><div class="s muted">modern-era range</div></div>
     </div>`;
 
-    html += `<div class="card mt">
+    const chartB = `<div class="card">
       <div class="chart-readout" id="readout-ratio"></div>
       <div class="chart" id="chart-ratio"></div>
       <div class="mt-s">${rangeSeg('ratio')}</div>
     </div>`;
 
     // Swap calculator
-    html += `<div class="section-title"><span>Swap calculator</span></div>
+    const swapB = `<div class="section-title"><span>Swap calculator</span></div>
     <div class="card">
       <div class="seg full" id="swapDir"><button class="on" data-v="s2g">Silver → Gold</button><button data-v="g2s">Gold → Silver</button></div>
       <div class="form-group mt">
@@ -917,8 +1071,9 @@
       <div class="hint" id="swapHint"></div>
     </div>`;
 
+    let otherB = '';
     if (P.silver.grams || P.gold.grams) {
-      html += `<div class="section-title"><span>Your stack, in the other metal</span></div>
+      otherB = `<div class="section-title"><span>Your stack, in the other metal</span></div>
       <div class="card tight">
         ${P.silver.grams ? `<div class="kv"><span class="k">Your ${weight(P.silver.grams)} silver</span><span class="v num">= ${weight(P.silver.grams / ratio, { unit: 'g', noKg: true })} gold</span></div>` : ''}
         ${P.gold.grams ? `<div class="kv"><span class="k">Your ${weight(P.gold.grams)} gold</span><span class="v num">= ${weight(P.gold.grams * ratio, { unit: 'g' })} silver</span></div>` : ''}
@@ -926,11 +1081,12 @@
       </div>`;
     }
 
-    html += `<div class="card tight mt"><div class="hint">
+    const explainB = `<div class="card tight"><div class="hint">
       <b>How stackers use the ratio.</b> When the ratio is high, silver is cheap relative to gold, so you get more metal by buying silver. When it falls, swapping silver into gold locks in the gain in ounces, not just rupees.
       Over the last century the global ratio has mostly sat between 40 and 100. Nepal's ratio differs from the international one because import duties differ for each metal. Remember that every swap costs making charges, SDF and dealer spreads.
     </div></div>`;
 
+    html += layout([[1, heroB], [3, chartB], [6, explainB]], [[2, statsB], [4, swapB], [5, otherB]]);
     el.innerHTML = html;
 
     const data = ratioSeries(ui.range.ratio);
@@ -1011,20 +1167,20 @@
     const days = P.first ? daysBetween(P.first, todayNPT()) : 0;
     const premiums = P.making + P.sdf;
 
-    html += `<div class="stat-grid four fade-in">
+    html += `<div class="stat-grid four fade-in top-row">
       <div class="stat"><div class="label">Total invested</div><div class="v num">${money(P.invested)}</div><div class="s muted">${state.txns.filter(t => t.type === 'buy').length} purchases</div></div>
       <div class="stat"><div class="label">Total return</div><div class="v num ${cls(totalReturn)}">${money(totalReturn, { sign: true })}</div><div class="s ${cls(totalReturn)}">${pct(P.invested ? totalReturn / P.invested : null)}</div></div>
       <div class="stat"><div class="label">Annualised (XIRR)</div><div class="v num ${cls(P.xirr)}">${P.xirr != null ? pct(P.xirr, 1) : '—'}</div><div class="s muted">${P.xirr != null ? 'money-weighted' : 'needs 30+ days'}</div></div>
       <div class="stat"><div class="label">Stacking for</div><div class="v num">${days >= 365 ? (days / 365).toFixed(1) + ' yrs' : days + ' days'}</div><div class="s muted">since ${fmtDate(P.first)}</div></div>
     </div>`;
 
-    html += `<div class="section-title"><span>Stack value vs. invested</span></div>
+    const valueB = `<div class="section-title"><span>Stack value vs. invested</span></div>
       <div class="card"><div class="chart-readout" id="readout-ins"></div><div class="chart" id="chart-ins"></div>
       <div class="legend"><span><i style="background:var(--accent)"></i>Value</span><span><i style="background:var(--text-3)"></i>Invested</span></div></div>`;
 
     // Allocation + premiums
     const sv = P.silver.value || 0, gv = P.gold.value || 0;
-    html += `<div class="grid two mt">
+    const allocB = `<div class="grid two">
       <div class="card">
         <h3>Allocation</h3>
         <div class="row mt">
@@ -1047,16 +1203,17 @@
     </div>`;
 
     // Monthly investing
-    html += `<div class="section-title"><span>Monthly buying</span></div>
+    const monthlyB = `<div class="section-title"><span>Monthly buying</span></div>
       <div class="card"><div class="chart short" id="chart-monthly"></div><div class="hint mt-s" id="monthlyHint"></div></div>`;
 
     // Lots
     const lots = state.txns.filter(t => t.type === 'buy' && perGram(t.metal)).map(t => ({ t, ret: (t.grams * perGram(t.metal)) / t.amount - 1 }));
+    let lotsB = '';
     if (lots.length) {
       lots.sort((a, b) => b.ret - a.ret);
       const best = lots[0], worst = lots[lots.length - 1];
       const cheapest = lots.slice().sort((a, b) => a.t.amount / a.t.grams - b.t.amount / b.t.grams)[0];
-      html += `<div class="section-title"><span>Your purchases</span></div>
+      lotsB = `<div class="section-title"><span>Your purchases</span></div>
       <div class="list plain">
         <div class="list-item"><div class="li-main"><div class="li-sub">Best purchase</div><div class="li-title">${weight(best.t.grams)} ${best.t.metal} · ${fmtDate(best.t.date)}</div></div><div class="li-right"><div class="t ${cls(best.ret)}">${pct(best.ret)}</div></div></div>
         ${lots.length > 1 ? `<div class="list-item"><div class="li-main"><div class="li-sub">Weakest purchase</div><div class="li-title">${weight(worst.t.grams)} ${worst.t.metal} · ${fmtDate(worst.t.date)}</div></div><div class="li-right"><div class="t ${cls(worst.ret)}">${pct(worst.ret)}</div></div></div>` : ''}
@@ -1066,7 +1223,7 @@
     }
 
     // What-if
-    html += `<div class="section-title"><span>What if…</span></div>
+    const whatifB = `<div class="section-title"><span>What if…</span></div>
       <div class="card">
         <div class="seg full" id="wiMetal"><button class="on" data-v="silver">Silver</button><button data-v="gold">Gold</button></div>
         <div class="form-group mt"><div class="field"><label for="wiPrice">Rate per tola</label><input id="wiPrice" inputmode="numeric"><span class="unit">Rs</span></div></div>
@@ -1076,16 +1233,18 @@
       </div>`;
 
     // Goals & badges
-    html += `<div class="section-title"><span>Goals</span><button class="link" id="editGoals">Edit</button></div><div class="grid two">`;
+    let goalsB = `<div class="section-title"><span>Goals</span><button class="link" id="editGoals">Edit</button></div><div class="grid two">`;
     for (const m of METALS) {
       const goal = state.settings[m].goal, g = P[m].grams;
       const prog = goal ? Math.min(1, g / goal) : 0;
-      html += `<div class="card"><div class="row">
+      goalsB += `<div class="card"><div class="row">
         <div class="stack-v"><h3>${NAME[m]} goal</h3><div class="mid num">${weight(goal || 0)}</div><div class="small muted">${goal && g < goal ? weight(goal - g) + ' to go' + (rate(m) ? ' · ≈ ' + money((goal - g) / TOLA * rate(m), { raw: true }) : '') : goal ? 'Reached 🎉' : 'No goal set'}</div></div>
         ${Charts.ring([{ value: prog, color: color(m) }, { value: 1 - prog, color: 'transparent' }], { size: 92, stroke: 9, label: Math.round(prog * 100) + '%', labelSize: 17 })}
       </div></div>`;
     }
-    html += `</div>`;
+    goalsB += `</div>`;
+
+    html += layout([[2, valueB], [4, monthlyB], [6, whatifB]], [[3, allocB], [5, lotsB], [7, goalsB]]);
 
     html += `<div class="section-title"><span>Milestones</span></div><div class="badges">${badges(P).map(b => `
       <div class="badge ${b.got ? '' : 'locked'}"><div class="medal" style="background:${b.bg}">${b.icon}</div><div class="t">${b.t}</div><div class="s">${b.s}</div></div>`).join('')}</div>`;
@@ -1497,11 +1656,12 @@
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
     $('#topbarTitle').textContent = $('#view-' + view).dataset.title;
     RENDER[view]();
+    renderNav();
     if (!opts.keepScroll) window.scrollTo(0, 0);
     if (!opts.noHash) history.replaceState(null, '', view === 'home' ? location.pathname : '#' + view);
     onScroll();
   }
-  function render() { RENDER[currentView](); }
+  function render() { RENDER[currentView](); renderNav(); }
 
   function applyPrefs() {
     document.body.classList.toggle('blur-values', !!state.settings.hideValues);
@@ -1512,6 +1672,7 @@
   // ------------------------------------------------------------------ boot
   $$('.tab').forEach(t => t.addEventListener('click', () => { haptic(); go(t.dataset.view); }));
   $('#fab').addEventListener('click', () => openTxnSheet(null, {}));
+  $('#navAdd').addEventListener('click', () => openTxnSheet(null, {}));
   $('#backdrop').addEventListener('click', closeSheet);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
   window.addEventListener('scroll', onScroll, { passive: true });
