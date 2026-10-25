@@ -34,6 +34,11 @@ def log(*a):
     print(*a, file=sys.stderr)
 
 
+def notice(msg: str, level: str = "notice"):
+    """Surface a line as a GitHub Actions annotation (visible on the run page and via the API)."""
+    print(f"::{level}::{msg}".replace("\n", " "), flush=True)
+
+
 def get(url: str, timeout: int = 25) -> str:
     req = Request(url, headers={"User-Agent": UA, "Accept": "application/json, text/html;q=0.9"})
     with urlopen(req, timeout=timeout) as r:
@@ -226,15 +231,17 @@ def main():
     for name, fn in (("fenegosida", fetch_fenegosida), ("hamropatro", fetch_hamropatro), ("ashesh", fetch_ashesh)):
         try:
             snap, hist = fn()
-            log(f"OK from {name}: silver={snap['silver']['tola']} gold={snap['gold']['tola']} date={snap['date']}")
+            notice(f"OK from {name}: silver={snap['silver']['tola']} gold={snap['gold']['tola']} "
+                   f"date={snap['date']} history={len(hist['silver'])}/{len(hist['gold'])} days")
             break
         except Exception as e:  # noqa: BLE001
             errors.append(f"{name}: {e}")
-            log(f"{name} failed: {e}")
+            notice(f"{name} failed: {e}", "warning")
 
     old = load(DATA / "prices.json", {})
     history = load(DATA / "history.json", {"gold": [], "silver": [], "intl": []})
     intl = fetch_international()
+    notice(f"international: {intl}")
 
     if snap is None:
         log("All Nepal sources failed:", errors)
