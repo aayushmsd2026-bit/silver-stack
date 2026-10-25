@@ -1,6 +1,6 @@
 /* Offline support: app shell is cached; rate data is network-first with cache fallback. */
-const VERSION = 'stack-v2';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/charts.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png'];
+const VERSION = 'stack-v3';
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/charts.js', 'js/cloud.js', 'js/firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

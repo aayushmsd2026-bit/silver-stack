@@ -380,7 +380,8 @@ input[type="range"] { accent-color: var(--accent); }
   position: fixed; left: 50%; bottom: calc(160px + var(--safe-b)); z-index: 60;
   transform: translate(-50%, 16px); opacity: 0; pointer-events: none;
   background: #45413C; color: #FCFBF8; padding: 12px 22px; border-radius: var(--radius);
-  font-size: 14px; font-weight: 400; transition: var(--ease); white-space: nowrap;
+  font-size: 14px; font-weight: 400; transition: var(--ease); text-align: center;
+  width: max-content; max-width: calc(100vw - 40px);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 

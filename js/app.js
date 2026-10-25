@@ -57,7 +57,7 @@
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
     catch (e) { toast('Could not save on this device'); }
     requestPersistence();
-    if (!opts.noSync) scheduleGistPush();
+    if (!opts.noSync) { scheduleGistPush(); scheduleCloudPush(); }
   }
 
   let persistAsked = false;
@@ -434,6 +434,130 @@
     state.updatedAt = data.updatedAt || Date.now();
   }
 
+  // ------------------------------------------------------------------ Google sign-in + Firestore sync
+  // js/cloud.js (a module) exposes window.StackCloud. Whole-document sync: newest wins, and the
+  // first sync on a device merges transactions by id so signing in can never lose a purchase.
+  let cloud = null, cloudUser = null, cloudUnwatch = null, cloudTimer = null;
+  const cloudStatus = { lastSync: null, error: null, busy: false };
+
+  function initCloud() {
+    cloud = window.StackCloud;
+    if (!cloud || !cloud.enabled) return;
+    cloud.onUser(async user => {
+      cloudUser = user;
+      if (cloudUnwatch) { cloudUnwatch(); cloudUnwatch = null; }
+      if (user) {
+        try {
+          const r = await cloudInitialSync();
+          if (r) toast(r);
+          cloudUnwatch = cloud.watch(remote => {
+            if (remote && remote.updatedAt > state.updatedAt) {
+              adopt(remote);
+              save({ keepStamp: true, noSync: true });
+              cloudStatus.lastSync = new Date().toISOString();
+              render();
+              toast('Updated from your other device');
+            }
+          });
+        } catch (e) { cloudStatus.error = e.message; }
+      }
+      render();
+      refreshAccountSection();
+    });
+  }
+
+  async function cloudInitialSync() {
+    cloudStatus.busy = true;
+    try {
+      const remote = await cloud.load();
+      const local = state.txns, rtx = remote && Array.isArray(remote.txns) ? remote.txns : [];
+      let msg = null;
+      if (!remote || (!rtx.length && local.length)) {
+        if (local.length || state.updatedAt) await cloud.save(backupPayload());
+        if (local.length) msg = 'Your stack is now saved to your Google account';
+      } else if (!local.length) {
+        adopt(remote); save({ keepStamp: true, noSync: true });
+        msg = `Loaded ${rtx.length} transactions from your Google account`;
+      } else {
+        const byId = new Map(rtx.map(t => [t.id, t]));
+        const added = local.filter(t => !byId.has(t.id));
+        const newer = remote.updatedAt > state.updatedAt ? remote : backupPayload();
+        if (remote.updatedAt > state.updatedAt) adopt(remote);
+        if (added.length) {
+          for (const t of local) if (!byId.has(t.id)) byId.set(t.id, t);
+          state.txns = [...byId.values()];
+          state.settings = deepMerge(state.settings, { ...newer.settings, gist: state.settings.gist });
+          save({ noSync: true });
+          await cloud.save(backupPayload());
+          msg = `Merged this device's ${added.length} new transaction${added.length > 1 ? 's' : ''} into your account`;
+        } else if (remote.updatedAt < state.updatedAt) {
+          await cloud.save(backupPayload());
+        } else {
+          save({ keepStamp: true, noSync: true });
+        }
+      }
+      cloudStatus.lastSync = new Date().toISOString(); cloudStatus.error = null;
+      return msg;
+    } finally { cloudStatus.busy = false; }
+  }
+
+  function scheduleCloudPush() {
+    if (!cloud || !cloud.enabled || !cloudUser) return;
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(async () => {
+      try {
+        await cloud.save(backupPayload());
+        cloudStatus.lastSync = new Date().toISOString(); cloudStatus.error = null;
+      } catch (e) { cloudStatus.error = e.message; }
+      refreshAccountSection();
+    }, 800);
+  }
+
+  const G_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3zM12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22zm-5.6-8a6 6 0 0 1 0-3.9V7.5H3.1a10 10 0 0 0 0 9zM12 6c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.5l3.3 2.6C7.2 7.8 9.4 6 12 6z"/></svg>';
+
+  function accountHtml() {
+    if (!cloud) return `<div class="form-group"><div class="field"><label>Google sync</label><span class="small muted" style="margin-left:auto">Loading…</span></div></div>`;
+    if (!cloud.enabled) {
+      return cloud.reason === 'offline'
+        ? `<div class="form-group"><div class="field"><label>Google sync</label><span class="small muted" style="margin-left:auto">Unavailable offline</span></div></div>`
+        : `<div class="form-group"><div class="field"><label>Google sync</label><span class="small muted" style="margin-left:auto">Not set up yet</span></div></div>
+           <div class="form-caption">Add your Firebase project's settings to <b>js/firebase-config.js</b> to turn on Sign in with Google. The steps are in the README.</div>`;
+    }
+    if (!cloudUser) {
+      return `<button class="btn secondary block" id="sGoogle">${G_ICON} Sign in with Google</button>
+        <div class="form-caption">Sign in with the same Google account on your phone and laptop, and every change syncs automatically. Your stack also keeps working offline.</div>`;
+    }
+    const u = cloudUser;
+    const status = cloudStatus.error ? '⚠️ ' + esc(cloudStatus.error) : cloudStatus.busy ? 'Syncing…' : cloudStatus.lastSync ? 'Synced ' + ago(cloudStatus.lastSync) : 'Connected';
+    return `<div class="form-group">
+        <div class="field" style="padding-top:14px;padding-bottom:14px">
+          ${u.photoURL ? `<img src="${esc(u.photoURL)}" alt="" referrerpolicy="no-referrer" style="width:40px;height:40px;border-radius:50%;flex:none">` : ''}
+          <div class="li-main"><div class="li-title">${esc(u.displayName || 'Signed in')}</div><div class="li-sub">${esc(u.email || '')}</div></div>
+        </div>
+        <div class="field"><label>Sync</label><span class="small muted" style="margin-left:auto;text-align:right">${status}</span></div>
+        <button class="field action" id="sSignOut">Sign out</button>
+      </div>
+      <div class="form-caption">Changes you make on any device signed in to this account appear everywhere within seconds.</div>`;
+  }
+
+  function bindAccount(root) {
+    const g = $('#sGoogle', root);
+    if (g) g.onclick = async () => {
+      try { await cloud.signIn(); }
+      catch (e) { toast(e.code === 'auth/unauthorized-domain' ? 'Add this site to Firebase → Authentication → Authorized domains' : 'Sign-in failed: ' + (e.code || e.message)); }
+    };
+    const o = $('#sSignOut', root);
+    if (o) o.onclick = async () => {
+      if (!confirm('Sign out? Your stack stays on this device, but stops syncing.')) return;
+      await cloud.signOut(); toast('Signed out');
+    };
+  }
+
+  function refreshAccountSection() {
+    const box = $('#sAccount');
+    if (box) { box.innerHTML = accountHtml(); bindAccount(box); }
+  }
+
   // ------------------------------------------------------------------ rendering helpers
   const ICON = {
     gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
@@ -565,7 +689,7 @@
     }
 
     html += backupNudge();
-    html += `<p class="footer-note">Your holdings are stored only on this device${state.settings.gist.token ? ' and in your private GitHub Gist' : ''}.<br>Rates: Federation of Nepal Gold &amp; Silver Dealers' Association.</p>`;
+    html += `<p class="footer-note">${cloudUser ? `Synced with your Google account (${esc(cloudUser.email || '')}).` : `Your holdings are stored only on this device${state.settings.gist.token ? ' and in your private GitHub Gist' : ''}.`}<br>Rates: Federation of Nepal Gold &amp; Silver Dealers' Association.</p>`;
 
     el.innerHTML = html;
     METALS.forEach(m => { const s = $(`#spark-${m}`, el); if (s) Charts.spark(s, series(m, '1M').map(r => r[1]), color(m)); });
@@ -601,10 +725,10 @@
   }
 
   function backupNudge() {
-    if (!state.txns.length || state.settings.gist.token) return '';
+    if (!state.txns.length || state.settings.gist.token || cloudUser) return '';
     const last = state.settings.lastExport;
     if (last && Date.now() - new Date(last).getTime() < 30 * 864e5) return '';
-    return `<div class="notice info mt"><span>☁️</span><div>Your stack lives only in this browser. <button class="text-btn" id="nudgeExport">Turn on backup</button> so you never lose it.</div></div>`;
+    return `<div class="notice info mt"><span>☁️</span><div>Your stack lives only in this browser. <button class="text-btn" id="nudgeExport">Sign in with Google</button> to back it up and sync it across your devices.</div></div>`;
   }
 
   // ------------------------------------------------------------------ METAL VIEW
@@ -1240,6 +1364,9 @@
     const html = `
       <div class="sheet-head"><span></span><h2>Settings</h2><button class="text-btn r" id="sDone">Done</button></div>
 
+      <div class="form-label">Account</div>
+      <div id="sAccount">${accountHtml()}</div>
+
       <div class="form-label">Display</div>
       <div class="form-group">
         <div class="field"><label>Weight unit</label><div class="seg" id="sUnit" style="margin-left:auto"><button data-v="g">Grams</button><button data-v="tola">Tola</button></div></div>
@@ -1290,6 +1417,7 @@
 
     openSheet(html, root => {
       const set = (sel, v) => $$(sel + ' button', root).forEach(b => b.classList.toggle('on', b.dataset.v === v));
+      bindAccount(root);
       set('#sUnit', S.unit); set('#sBasis', S.chargeBasis);
       $$('#sUnit button', root).forEach(b => b.onclick = () => { S.unit = b.dataset.v; set('#sUnit', S.unit); save(); });
       $$('#sBasis button', root).forEach(b => b.onclick = () => { S.chargeBasis = b.dataset.v; set('#sBasis', S.chargeBasis); save(); });
@@ -1404,6 +1532,9 @@
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+
+  if (window.StackCloud) initCloud();
+  else window.addEventListener('stackcloud', initCloud, { once: true });
 
   // debug hook for tests
   window.__stack = { state: () => state, market: () => market, portfolio };
