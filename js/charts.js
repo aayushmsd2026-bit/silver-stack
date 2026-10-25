@@ -110,7 +110,7 @@
       if (s.fill) {
         const id = 'g' + Math.random().toString(36).slice(2);
         const lg = h('linearGradient', { id, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
-        h('stop', { offset: '0%', 'stop-color': s.color, 'stop-opacity': .28 }, lg);
+        h('stop', { offset: '0%', 'stop-color': s.color, 'stop-opacity': .16 }, lg);
         h('stop', { offset: '100%', 'stop-color': s.color, 'stop-opacity': 0 }, lg);
         const last = s.data[s.data.length - 1], first = s.data[0];
         h('path', { d: d + `L${x(last[0])} ${H - padB}L${x(first[0])} ${H - padB}Z`, fill: `url(#${id})` }, svg);
@@ -193,7 +193,7 @@
     const svg = h('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', width: '100%', height: '100%' }, el);
     const id = 's' + Math.random().toString(36).slice(2);
     const lg = h('linearGradient', { id, x1: 0, y1: 0, x2: 0, y2: 1 }, h('defs', {}, svg));
-    h('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': .22 }, lg);
+    h('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': .14 }, lg);
     h('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': 0 }, lg);
     const d = data.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join('');
     h('path', { d: d + `L${W} ${H}L0 ${H}Z`, fill: `url(#${id})` }, svg);

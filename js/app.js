@@ -13,7 +13,6 @@
 
   const DEFAULT_SETTINGS = {
     unit: 'g',                      // 'g' | 'tola'
-    theme: 'auto',                  // 'auto' | 'light' | 'dark'
     hideValues: false,
     chargeBasis: 'total',           // 'total': % of the price paid · 'ontop': added on top of metal value
     silver: { makingPct: 4, makingThreshold: 500, sdfPct: 0.5, buybackPct: 0, goal: 1000, alertBelow: null, alertAbove: null },
@@ -508,8 +507,8 @@
     if (!P.any) {
       html += `<div class="card empty fade-in">
         <svg class="art" viewBox="0 0 84 84" aria-hidden="true">
-          <defs><linearGradient id="ag" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1f4f8"/><stop offset="1" stop-color="#9aa6b8"/></linearGradient>
-          <linearGradient id="au" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe7a1"/><stop offset="1" stop-color="#c08f1c"/></linearGradient></defs>
+          <defs><linearGradient id="ag" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#45413C" stop-opacity=".35"/><stop offset="1" stop-color="#45413C" stop-opacity=".8"/></linearGradient>
+          <linearGradient id="au" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E2A77A" stop-opacity=".7"/><stop offset="1" stop-color="#E2A77A"/></linearGradient></defs>
           <path d="M14 58h40l-6-14H20z" fill="url(#ag)"/><path d="M30 44h40l-6-14H36z" fill="url(#au)"/><path d="M8 72h44l-6-14H14z" fill="url(#ag)" opacity=".85"/>
         </svg>
         <h2>Start your stack</h2>
@@ -623,7 +622,7 @@
       <div class="chart-readout" id="readout-${m}"></div>
       <div class="chart" id="chart-${m}"></div>
       <div class="mt-s">${rangeSeg(m)}</div>
-      ${p.buys ? `<div class="legend"><span><i style="background:${color_}"></i>Market</span><span><i style="background:var(--blue)"></i>Your purchases</span>${p.avgTola ? '<span><i style="background:var(--orange)"></i>Break-even</span>' : ''}</div>` : ''}
+      ${p.buys ? `<div class="legend"><span><i style="background:${color_}"></i>Market</span><span><i style="background:${m === 'gold' ? 'var(--text)' : 'var(--accent)'}"></i>Your purchases</span>${p.avgTola ? '<span><i style="background:var(--text-3)"></i>Break-even</span>' : ''}</div>` : ''}
     </div>`;
 
     // Rates grid
@@ -703,8 +702,8 @@
       const data = series(m, ui.range[m]);
       const from = data.length ? data[0][0] : 0;
       const markers = sortedTxns(m).filter(t => t.type === 'buy' && parseDate(t.date) >= from && data.length)
-        .map(t => ({ t: parseDate(t.date), y: t.amount / t.grams * TOLA, color: color('blue'), r: 4 }));
-      const refLines = p.avgTola && data.length ? [{ y: p.avgTola, color: color('orange'), label: 'Break-even' }] : [];
+        .map(t => ({ t: parseDate(t.date), y: t.amount / t.grams * TOLA, color: color(m === 'gold' ? 'text' : 'accent'), r: 4 }));
+      const refLines = p.avgTola && data.length ? [{ y: p.avgTola, color: color('text-2'), label: 'Break-even' }] : [];
       const readout = $(`#readout-${m}`, el);
       const setDefault = () => {
         if (!data.length) { readout.innerHTML = `<div class="v num">${r ? money(r, { raw: true }) : '—'}</div><div class="d">History builds up as rates are collected each day</div>`; return; }
@@ -787,7 +786,7 @@
     html += `<div class="section-title"><span>Swap calculator</span></div>
     <div class="card">
       <div class="seg full" id="swapDir"><button class="on" data-v="s2g">Silver → Gold</button><button data-v="g2s">Gold → Silver</button></div>
-      <div class="form-group mt" style="background:var(--fill)">
+      <div class="form-group mt">
         <div class="field"><label for="swapAmt">Weight</label><input id="swapAmt" inputmode="decimal" placeholder="0" value="${P.silver.grams ? +P.silver.grams.toFixed(2) : 1000}"><span class="unit">g</span></div>
       </div>
       <div class="mid num mt" id="swapOut"></div>
@@ -819,8 +818,8 @@
     };
     setDefault();
     Charts.line($('#chart-ratio', el), {
-      series: [{ data, color: color('blue'), fill: true }],
-      refLines: avg && data.length > 1 ? [{ y: avg, color: color('orange'), label: 'Average ' + avg.toFixed(1) }] : [],
+      series: [{ data, color: color('text'), fill: true }],
+      refLines: avg && data.length > 1 ? [{ y: avg, color: color('accent'), label: 'Average ' + avg.toFixed(1) }] : [],
       yTick: v => v.toFixed(0),
       empty: 'Ratio history appears as daily rates are collected',
       onScrub: pts => {
@@ -897,7 +896,7 @@
 
     html += `<div class="section-title"><span>Stack value vs. invested</span></div>
       <div class="card"><div class="chart-readout" id="readout-ins"></div><div class="chart" id="chart-ins"></div>
-      <div class="legend"><span><i style="background:var(--green)"></i>Value</span><span><i style="background:var(--text-3)"></i>Invested</span></div></div>`;
+      <div class="legend"><span><i style="background:var(--accent)"></i>Value</span><span><i style="background:var(--text-3)"></i>Invested</span></div></div>`;
 
     // Allocation + premiums
     const sv = P.silver.value || 0, gv = P.gold.value || 0;
@@ -916,7 +915,7 @@
         <h3>Making charge &amp; SDF</h3>
         <div class="mid num mt-s">${money(premiums)}</div>
         <div class="small muted">${pct(P.invested ? premiums / P.invested : 0)} of everything you've invested</div>
-        <div class="bar-track mt"><i style="width:${premiums ? P.making / premiums * 100 : 0}%;background:var(--orange)"></i><i style="width:${premiums ? P.sdf / premiums * 100 : 0}%;background:var(--blue)"></i></div>
+        <div class="bar-track mt"><i style="width:${premiums ? P.making / premiums * 100 : 0}%;background:var(--accent)"></i><i style="width:${premiums ? P.sdf / premiums * 100 : 0}%;background:var(--text)"></i></div>
         <div class="kv mt-s"><span class="k">Making charge</span><span class="v num">${money(P.making)}</span></div>
         <div class="kv"><span class="k">SDF</span><span class="v num">${money(P.sdf)}</span></div>
         ${P.making > 0 ? `<div class="hint mt-s">Buying silver in lots of ${state.settings.silver.makingThreshold} g or more skips the making charge.</div>` : ''}
@@ -946,7 +945,7 @@
     html += `<div class="section-title"><span>What if…</span></div>
       <div class="card">
         <div class="seg full" id="wiMetal"><button class="on" data-v="silver">Silver</button><button data-v="gold">Gold</button></div>
-        <div class="form-group mt" style="background:var(--fill)"><div class="field"><label for="wiPrice">Rate per tola</label><input id="wiPrice" inputmode="numeric"><span class="unit">Rs</span></div></div>
+        <div class="form-group mt"><div class="field"><label for="wiPrice">Rate per tola</label><input id="wiPrice" inputmode="numeric"><span class="unit">Rs</span></div></div>
         <input type="range" id="wiSlider" min="-50" max="200" value="25" style="width:100%" aria-label="Price change percent">
         <div class="row small muted"><span>−50%</span><span id="wiPct">+25%</span><span>+200%</span></div>
         <div class="mt" id="wiOut"></div>
@@ -975,7 +974,7 @@
     const def = () => { ro.innerHTML = `<div class="v num">${money(P.value)}</div><div class="d"><span class="${cls(P.unrealized)}">${money(P.unrealized, { sign: true })}</span> unrealised on ${money(P.cost)} cost</div>`; };
     def();
     Charts.line($('#chart-ins', el), {
-      series: [{ data: vh.value, color: color('green'), fill: true }, { data: vh.cost, color: color('text-3'), width: 1.6, dash: '4 3' }],
+      series: [{ data: vh.value, color: color('accent'), fill: true }, { data: vh.cost, color: color('text-3'), width: 1.6, dash: '4 3' }],
       empty: 'Your value history appears as daily rates come in',
       onScrub: pts => {
         if (!pts) return def();
@@ -992,7 +991,7 @@
       months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('en-GB', { month: 'narrow' }), value: 0 });
     }
     for (const t of state.txns) if (t.type === 'buy') { const mo = months.find(x => x.key === t.date.slice(0, 7)); if (mo) mo.value += t.amount; }
-    Charts.bars($('#chart-monthly', el), months.map(x => ({ ...x, color: x.value ? color('blue') : color('fill-2') })), { fmt: v => v ? Charts.compact(v) : '' });
+    Charts.bars($('#chart-monthly', el), months.map(x => ({ ...x, color: x.value ? color('accent') : color('sep') })), { fmt: v => v ? Charts.compact(v) : '' });
     const active = months.filter(x => x.value);
     $('#monthlyHint', el).innerHTML = active.length
       ? `Bought in ${active.length} of the last 12 months · average ${money(active.reduce((a, b) => a + b.value, 0) / active.length, { raw: true })} per active month. Regular buying (rupee-cost averaging) smooths out price swings.`
@@ -1028,7 +1027,7 @@
     const s = P.silver.grams, g = P.gold.grams, buys = state.txns.filter(t => t.type === 'buy').length;
     const days = P.first ? daysBetween(P.first, todayNPT()) : 0;
     const months = new Set(state.txns.filter(t => t.type === 'buy').map(t => t.date.slice(0, 7))).size;
-    const AG = 'linear-gradient(140deg,#f1f4f8,#9aa6b8)', AU = 'linear-gradient(140deg,#fbe7a1,#c08f1c)', BL = 'linear-gradient(140deg,#8fd3ff,#2f7cf6)', GR = 'linear-gradient(140deg,#9ff0b5,#1fa04a)';
+    const AG = 'var(--bg)', AU = 'var(--accent)', BL = 'var(--bg)', GR = 'var(--accent-soft)';
     return [
       { t: 'First stack', s: 'Log a purchase', got: buys >= 1, icon: '1', bg: BL },
       { t: '1 tola silver', s: '11.66 g', got: s >= TOLA, icon: 'Ag', bg: AG },
@@ -1244,7 +1243,6 @@
       <div class="form-label">Display</div>
       <div class="form-group">
         <div class="field"><label>Weight unit</label><div class="seg" id="sUnit" style="margin-left:auto"><button data-v="g">Grams</button><button data-v="tola">Tola</button></div></div>
-        <div class="field"><label>Appearance</label><div class="seg" id="sTheme" style="margin-left:auto"><button data-v="auto">Auto</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
       </div>
 
       <div class="form-label">How charges are counted</div>
@@ -1281,20 +1279,19 @@
 
       <div class="form-label">Backup file</div>
       <div class="form-group">
-        <button class="field" id="sExport" style="width:100%;color:var(--blue)">Export backup (.json)</button>
-        <label class="field" style="color:var(--blue);cursor:pointer">Import backup…<input type="file" id="sImport" accept="application/json,.json" hidden></label>
-        <button class="field" id="sExportCsv" style="width:100%;color:var(--blue)">Export transactions (.csv)</button>
+        <button class="field action" id="sExport">Export backup (.json)</button>
+        <label class="field action" style="cursor:pointer">Import backup…<input type="file" id="sImport" accept="application/json,.json" hidden></label>
+        <button class="field action" id="sExportCsv">Export transactions (.csv)</button>
       </div>
       <div class="form-caption" id="sStorage">${S.lastExport ? 'Last exported ' + ago(S.lastExport) + '. ' : ''}Tip: add this site to your Home Screen (Share → Add to Home Screen) so your device keeps its data safely.</div>
 
-      <div class="form-group mt"><button class="field" id="sErase" style="width:100%;color:var(--red)">Erase all data on this device</button></div>
+      <div class="form-group mt"><button class="field action danger" id="sErase">Erase all data on this device</button></div>
       <p class="footer-note">Stack · rates from FENEGOSIDA via a scheduled GitHub Action.<br>1 tola = 11.6638 g · 1 troy oz = 31.1035 g</p>`;
 
     openSheet(html, root => {
       const set = (sel, v) => $$(sel + ' button', root).forEach(b => b.classList.toggle('on', b.dataset.v === v));
-      set('#sUnit', S.unit); set('#sTheme', S.theme); set('#sBasis', S.chargeBasis);
+      set('#sUnit', S.unit); set('#sBasis', S.chargeBasis);
       $$('#sUnit button', root).forEach(b => b.onclick = () => { S.unit = b.dataset.v; set('#sUnit', S.unit); save(); });
-      $$('#sTheme button', root).forEach(b => b.onclick = () => { S.theme = b.dataset.v; set('#sTheme', S.theme); save(); applyPrefs(); });
       $$('#sBasis button', root).forEach(b => b.onclick = () => { S.chargeBasis = b.dataset.v; set('#sBasis', S.chargeBasis); save(); });
       $$('[data-k]', root).forEach(inp => inp.addEventListener('change', () => {
         const [m, k] = inp.dataset.k.split('.');
@@ -1379,12 +1376,7 @@
   function render() { RENDER[currentView](); }
 
   function applyPrefs() {
-    const t = state.settings.theme;
-    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', t);
     document.body.classList.toggle('blur-values', !!state.settings.hideValues);
-    const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-    $$('meta[name="theme-color"]').forEach(m => m.setAttribute('content', dark ? '#000000' : '#f2f2f7'));
   }
 
   function onScroll() { $('#topbar').classList.toggle('show', window.scrollY > 48); }
@@ -1395,7 +1387,6 @@
   $('#backdrop').addEventListener('click', closeSheet);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
   window.addEventListener('scroll', onScroll, { passive: true });
-  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { applyPrefs(); render(); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       const age = market.loadedAt ? Date.now() - new Date(market.loadedAt).getTime() : Infinity;

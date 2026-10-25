@@ -1,15 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c2f36"/><stop offset="1" stop-color="#0d0e11"/></linearGradient>
-    <linearGradient id="ag" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#c9d1dd"/><stop offset="1" stop-color="#7d8899"/></linearGradient>
-    <linearGradient id="agt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f6f9"/><stop offset="1" stop-color="#b3bdcb"/></linearGradient>
-    <linearGradient id="au" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".5" stop-color="#e5bb45"/><stop offset="1" stop-color="#a87a10"/></linearGradient>
-    <linearGradient id="aut" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbe9a6"/><stop offset="1" stop-color="#d9a92e"/></linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="0" fill="url(#bg)"/>
-  <!-- bottom silver bars -->
-  <path d="M86 370h160l-26-62H112z" fill="url(#ag)"/><path d="M112 308h108l-10-14H122z" fill="url(#agt)"/>
-  <path d="M266 370h160l-26-62H292z" fill="url(#ag)"/><path d="M292 308h108l-10-14H302z" fill="url(#agt)"/>
-  <!-- top gold bar -->
-  <path d="M176 288h160l-26-62H202z" fill="url(#au)"/><path d="M202 226h108l-10-14H212z" fill="url(#aut)"/>
+  <rect width="512" height="512" fill="#F2EBE3"/>
+  <!-- silver bars in Deep Slate, gold bar in Muted Sunset -->
+  <path d="M86 370h160l-26-62H112z" fill="#45413C"/><path d="M112 308h108l-10-14H122z" fill="#45413C" opacity=".75"/>
+  <path d="M266 370h160l-26-62H292z" fill="#45413C"/><path d="M292 308h108l-10-14H302z" fill="#45413C" opacity=".75"/>
+  <path d="M176 288h160l-26-62H202z" fill="#E2A77A"/><path d="M202 226h108l-10-14H212z" fill="#E2A77A" opacity=".8"/>
 </svg>
