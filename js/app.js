@@ -15,13 +15,14 @@
     unit: 'g',                      // 'g' | 'tola'
     hideValues: false,
     chargeBasis: 'total',           // 'total': % of the price paid · 'ontop': added on top of metal value
-    silver: { makingPct: 4, makingThreshold: 500, sdfPct: 0.5, buybackPct: 0, goal: 1000, alertBelow: null, alertAbove: null },
+    silver: { makingPct: 4, makingThreshold: 500, sdfPct: 0.5, buybackPct: 3.99, goal: 1000, alertBelow: null, alertAbove: null },
     gold:   { makingPct: 4, makingThreshold: 500, sdfPct: 0.5, buybackPct: 0, goal: TOLA * 5, alertBelow: null, alertAbove: null },
     gist: { token: '', id: '', lastSync: null },
     lastExport: null,
     ignoreDupes: [],                // txnKeys the user confirmed are separate purchases
   };
 
+  const PURITY = { silver: ['99.99', '99.9', '99.5', '92.5'], gold: ['99.99', '99.9', '91.6'] };
   const FORMS = { bar: 'Bar', coin: 'Coin', granules: 'Granules', jewellery: 'Jewellery', utensil: 'Utensil', other: 'Other' };
   const METALS = ['silver', 'gold'];
   const NAME = { silver: 'Silver', gold: 'Gold' };
@@ -41,13 +42,22 @@
     return out;
   }
 
+  /** Settings saved before per-bill buyback existed had silver at 0%; bills say 3.99%. */
+  function migrateSettings(st) {
+    if (!st.buybackV2) {
+      if (!st.silver.buybackPct) st.silver.buybackPct = 3.99;
+      st.buybackV2 = true;
+    }
+    return st;
+  }
+
   function load() {
     let raw = null;
     try { raw = JSON.parse(localStorage.getItem(KEY)); } catch (_) {}
     const s = { version: 1, txns: [], settings: DEFAULT_SETTINGS, updatedAt: 0 };
     if (raw && typeof raw === 'object') {
       s.txns = Array.isArray(raw.txns) ? raw.txns : [];
-      s.settings = deepMerge(DEFAULT_SETTINGS, raw.settings || {});
+      s.settings = migrateSettings(deepMerge(DEFAULT_SETTINGS, raw.settings || {}));
       s.updatedAt = raw.updatedAt || 0;
       s.resetAt = raw.resetAt || 0;
     }
@@ -168,10 +178,15 @@
       .slice().sort((a, b) => a.date.localeCompare(b.date) || (a.created || 0) - (b.created || 0));
   }
 
+  /** Dealer buyback deduction (%) for a purchase: from its bill, else the metal's default. */
+  function buybackOf(t) {
+    return t.buybackPct != null ? t.buybackPct : (state.settings[t.metal].buybackPct || 0);
+  }
+
   /** Average-cost position for one metal. */
   function position(metal, asOf) {
     const p = { metal, grams: 0, cost: 0, metalCost: 0, making: 0, sdf: 0, realized: 0, invested: 0, received: 0,
-      lifetimeMaking: 0, lifetimeSdf: 0, buys: 0, sells: 0, boughtGrams: 0, soldGrams: 0, first: null, flows: [] };
+      lifetimeMaking: 0, lifetimeSdf: 0, buys: 0, sells: 0, boughtGrams: 0, soldGrams: 0, first: null, flows: [], bbGrams: 0 };
     for (const t of sortedTxns(metal)) {
       if (asOf && t.date > asOf) break;
       if (t.type === 'buy') {
@@ -179,6 +194,7 @@
         p.grams += t.grams; p.cost += t.amount; p.metalCost += b.metal; p.making += b.making; p.sdf += b.sdf;
         p.lifetimeMaking += b.making; p.lifetimeSdf += b.sdf;
         p.invested += t.amount; p.buys++; p.boughtGrams += t.grams;
+        p.bbGrams += t.grams * buybackOf(t);
         p.first = p.first || t.date;
         p.flows.push([t.date, -t.amount]);
       } else {
@@ -187,6 +203,7 @@
         const out = p.cost * frac;
         p.realized += t.amount - out;
         p.cost -= out; p.metalCost -= p.metalCost * frac; p.making -= p.making * frac; p.sdf -= p.sdf * frac;
+        p.bbGrams -= p.bbGrams * frac;
         p.grams -= g; p.received += t.amount; p.sells++; p.soldGrams += t.grams;
         p.flows.push([t.date, t.amount]);
       }
@@ -194,12 +211,14 @@
     if (p.grams < 1e-9) { p.grams = 0; p.cost = 0; p.metalCost = 0; p.making = 0; p.sdf = 0; }
     const pg = perGram(metal);
     p.value = pg != null ? p.grams * pg : null;
-    const bb = state.settings[metal].buybackPct || 0;
-    p.buybackValue = p.value != null ? p.value * (1 - bb / 100) : null;
+    p.buybackPct = p.grams > 0 ? p.bbGrams / p.grams : (state.settings[metal].buybackPct || 0);
+    p.buybackValue = p.value != null ? p.value * (1 - p.buybackPct / 100) : null;
     p.unrealized = p.value != null ? p.value - p.cost : null;
     p.unrealizedPct = p.cost > 0 && p.unrealized != null ? p.unrealized / p.cost : null;
     p.avgTola = p.grams > 0 ? (p.cost / p.grams) * TOLA : null;
     p.avgMetalTola = p.grams > 0 ? (p.metalCost / p.grams) * TOLA : null;
+    // FENEGOSIDA rate at which selling back to the dealer (after their cut) returns what you paid
+    p.sellBreakEven = p.avgTola ? p.avgTola / (1 - p.buybackPct / 100) : null;
     const r = rate(metal), pr = prevRate(metal);
     p.dayChange = r && pr ? p.grams * (r - pr) / TOLA : null;
     p.totalReturn = p.value != null ? p.value + p.received - p.invested : null;
@@ -431,7 +450,7 @@
   function adopt(data) {
     const keepGist = state.settings.gist;
     state.txns = Array.isArray(data.txns) ? data.txns : [];
-    state.settings = deepMerge(DEFAULT_SETTINGS, data.settings || {});
+    state.settings = migrateSettings(deepMerge(DEFAULT_SETTINGS, data.settings || {}));
     state.settings.gist = { ...keepGist, id: keepGist.id || data.settings?.gist?.id || '' };
     state.updatedAt = data.updatedAt || Date.now();
     state.resetAt = data.resetAt || 0;
@@ -704,7 +723,7 @@
     return `<button class="list-item" data-txn="${t.id}">
       <div class="li-icon ${isBuy ? t.metal : 'sell'}">${isBuy ? (t.metal === 'gold' ? 'Au' : 'Ag') : '↗'}</div>
       <div class="li-main">
-        <div class="li-title">${weight(t.grams)} ${isBuy ? '' : 'sold'} ${t.form && FORMS[t.form] && isBuy ? '· ' + FORMS[t.form] : ''}</div>
+        <div class="li-title">${weight(t.grams)} ${isBuy ? '' : 'sold'} ${t.form && FORMS[t.form] && isBuy ? '· ' + FORMS[t.form] : ''}${isBuy && t.purity ? ` · ${t.purity}` : ''}</div>
         <div class="li-sub">${fmtDate(t.date)} · ${money(perTola, { raw: true })}/tola${isBuy && b.making > 0 ? ' · incl. making' : ''}</div>
       </div>
       <div class="li-right"><div class="t num">${money(t.amount)}</div>${right}</div>
@@ -1104,7 +1123,9 @@
           <div class="kv"><span class="k">Average cost / tola</span><span class="v num">${money(p.avgTola, { raw: true })}</span></div>
           <div class="kv"><span class="k">Average metal-only cost / tola</span><span class="v num">${money(p.avgMetalTola, { raw: true })}</span></div>
           <div class="kv"><span class="k">Break-even rate</span><span class="v num">${money(p.avgTola, { raw: true })} ${r ? `<span class="small ${cls(r - p.avgTola)}">${pct(r / p.avgTola - 1)}</span>` : ''}</span></div>
-          ${state.settings[m].buybackPct ? `<div class="kv"><span class="k">If sold today (−${state.settings[m].buybackPct}% dealer cut)</span><span class="v num">${money(p.buybackValue)}</span></div>` : ''}
+          ${p.buybackPct ? `<div class="kv"><span class="k">If sold back today (−${+p.buybackPct.toFixed(2)}%)</span><span class="v num">${money(p.buybackValue)}</span></div>
+          <div class="kv"><span class="k">Profit if sold back today</span><span class="v num ${cls(p.buybackValue - p.cost)}">${money(p.buybackValue - p.cost, { sign: true })} · ${pct(p.cost ? p.buybackValue / p.cost - 1 : null)}</span></div>
+          <div class="kv"><span class="k">Sell-back break-even rate</span><span class="v num">${money(p.sellBreakEven, { raw: true })} ${r ? `<span class="small ${cls(r - p.sellBreakEven)}">${pct(r / p.sellBreakEven - 1)}</span>` : ''}</span></div>` : ''}
           <div class="kv"><span class="k">Making charge paid</span><span class="v num">${money(p.lifetimeMaking)}</span></div>
           <div class="kv"><span class="k">SDF paid</span><span class="v num">${money(p.lifetimeSdf)}</span></div>
           ${p.sells ? `<div class="kv"><span class="k">Realised P&amp;L</span><span class="v num ${cls(p.realized)}">${money(p.realized, { sign: true })}</span></div>` : ''}
@@ -1529,6 +1550,8 @@
     let makingOn = t.makingPct == null ? null : t.makingPct > 0;   // null = automatic by weight
     let makingPct = t.makingPct > 0 ? t.makingPct : S[t.metal].makingPct;
     let sdfPct = t.sdfPct != null ? t.sdfPct : S[t.metal].sdfPct;
+    const bbPct = t.buybackPct != null ? t.buybackPct : S[t.metal].buybackPct;
+    const purityOpts = m => PURITY[m].map(v => `<option value="${v}" ${(t.purity || PURITY[m][0]) === v ? 'selected' : ''}>${m === 'gold' ? 'Au' : 'Ag'} ${v}</option>`).join('');
     let basis = t.basis || S.chargeBasis;
 
     const html = `
@@ -1552,14 +1575,17 @@
             <label class="switch" style="min-width:0"><input type="checkbox" id="tMakingOn"><span></span></label></div>
           <div class="field" id="tMakingRow"><label for="tMakingPct">Making %</label><input id="tMakingPct" inputmode="decimal" value="${makingPct}"><span class="unit">%</span></div>
           <div class="field"><label for="tSdfPct">SDF %</label><input id="tSdfPct" inputmode="decimal" value="${sdfPct}"><span class="unit">%</span></div>
+          <div class="field"><label for="tBuyback">Buyback cut</label><input id="tBuyback" inputmode="decimal" value="${bbPct}"><span class="unit">%</span></div>
         </div>
-        <div class="form-caption">Charges are worked out as a percentage ${basis === 'ontop' ? 'added on top of the metal value' : 'of the total price paid'}. You can change this in Settings.</div>
+        <div class="form-caption">Charges are worked out as a percentage ${basis === 'ontop' ? 'added on top of the metal value' : 'of the total price paid'}. Buyback cut is from your bill, e.g. "buy back @3.99% less on federation market price".</div>
         <div class="breakdown" id="tBreak"></div>
 
         <div class="form-label">More</div>
         <div class="form-group">
           <div class="field"><label for="tForm">Form</label><select id="tForm">${Object.entries(FORMS).map(([k, v]) => `<option value="${k}" ${t.form === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label for="tPurity">Purity</label><select id="tPurity">${purityOpts(t.metal)}</select></div>
           <div class="field"><label for="tDealer">Dealer</label><input id="tDealer" placeholder="Optional" value="${esc(t.dealer)}"></div>
+          <div class="field"><label for="tBill">Bill no.</label><input id="tBill" placeholder="Optional" value="${esc(t.bill)}"></div>
         </div>
       </div>
       <div class="form-group mt-s"><div class="field col"><label for="tNote" class="small muted">Note</label><textarea id="tNote" placeholder="Optional">${esc(t.note)}</textarea></div></div>
@@ -1595,6 +1621,7 @@
             <div class="kv"><span class="k">SDF (${num($('#tSdfPct', root).value)}%)</span><span class="v num">${money(b.sdf, { raw: true, dec: true })}</span></div>
             <div class="kv total"><span class="k">Total paid</span><span class="v num">${money(amt, { raw: true, dec: true })}</span></div>
             ${g ? `<div class="kv"><span class="k">Effective rate</span><span class="v num">${money(perTola, { raw: true })}/tola</span></div>
+            ${rate(t.metal) ? `<div class="kv"><span class="k">Sell-back value today (−${num($('#tBuyback', root).value)}%)</span><span class="v num">${money(g * perGram(t.metal) * (1 - num($('#tBuyback', root).value) / 100), { raw: true })}</span></div>` : ''}
             <div class="kv"><span class="k">Metal-only rate</span><span class="v num">${money(metalTola, { raw: true })}/tola${rate(t.metal) ? ` <span class="small muted">vs ${money(rate(t.metal), { raw: true })} today</span>` : ''}</span></div>` : ''}`;
         } else {
           const p = position(t.metal);
@@ -1605,7 +1632,8 @@
       $$('#tType button', root).forEach(b => b.onclick = () => { t.type = b.dataset.v; set('#tType', t.type); update(); });
       $$('#tMetal button', root).forEach(b => b.onclick = () => {
         t.metal = b.dataset.v; set('#tMetal', t.metal);
-        if (!editing) { $('#tMakingPct', root).value = S[t.metal].makingPct; $('#tSdfPct', root).value = S[t.metal].sdfPct; }
+        if (!editing) { $('#tMakingPct', root).value = S[t.metal].makingPct; $('#tSdfPct', root).value = S[t.metal].sdfPct; $('#tBuyback', root).value = S[t.metal].buybackPct; }
+        $('#tPurity', root).innerHTML = purityOpts(t.metal);
         update();
       });
       $$('#tUnit button', root).forEach(b => b.onclick = () => {
@@ -1614,7 +1642,7 @@
         update();
       });
       $('#tMakingOn', root).onchange = e => { makingOn = e.target.checked; update(); };
-      ['#tWeight', '#tAmount', '#tMakingPct', '#tSdfPct'].forEach(s => $(s, root).addEventListener('input', update));
+      ['#tWeight', '#tAmount', '#tMakingPct', '#tSdfPct', '#tBuyback'].forEach(s => $(s, root).addEventListener('input', update));
       $('#tCancel', root).onclick = closeSheet;
       $('#tSave', root).onclick = () => {
         const g = grams(), amt = num($('#tAmount', root).value), date = $('#tDate', root).value;
@@ -1630,6 +1658,7 @@
           makingPct: on ? num($('#tMakingPct', root).value) : 0,
           sdfPct: num($('#tSdfPct', root).value), basis,
           form: $('#tForm', root).value, dealer: $('#tDealer', root).value.trim(),
+          buybackPct: num($('#tBuyback', root).value), purity: $('#tPurity', root).value, bill: $('#tBill', root).value.trim(),
         });
         if (t.type === 'sell') {
           const p = position(t.metal);
@@ -1661,7 +1690,7 @@
         <div class="field"><label>Making charge</label><input data-k="${m}.makingPct" inputmode="decimal" value="${S[m].makingPct}"><span class="unit">%</span></div>
         <div class="field"><label>Applies under</label><input data-k="${m}.makingThreshold" inputmode="decimal" value="${S[m].makingThreshold}"><span class="unit">g</span></div>
         <div class="field"><label>SDF</label><input data-k="${m}.sdfPct" inputmode="decimal" value="${S[m].sdfPct}"><span class="unit">%</span></div>
-        <div class="field"><label>Dealer buyback cut</label><input data-k="${m}.buybackPct" inputmode="decimal" value="${S[m].buybackPct}"><span class="unit">%</span></div>
+        <div class="field"><label>Default buyback cut</label><input data-k="${m}.buybackPct" inputmode="decimal" value="${S[m].buybackPct}"><span class="unit">%</span></div>
       </div>`;
     const gs = S.gist;
     const html = `
@@ -1688,7 +1717,7 @@
       <div class="form-caption">"% of total paid": 4% of the bill is making charge and 0.5% is SDF. "Added on top": making is 4% over the metal value, and SDF is 0.5% over that. Purchases you already logged keep the rules they were saved with.</div>
       ${metalBlock('silver')}
       ${metalBlock('gold')}
-      <div class="form-caption">Buyback cut is the deduction a dealer takes when you sell back. It's used for the "If sold today" value.</div>
+      <div class="form-caption">Buyback cut is what the dealer deducts from the FENEGOSIDA rate when you sell back (your silver bills say 3.99%). It's the default for new purchases; each purchase can have its own.</div>
 
       <div class="form-label" id="goals">Goals</div>
       <div class="form-group">
@@ -1762,10 +1791,10 @@
         S.lastExport = new Date().toISOString(); save({ noSync: true });
       };
       $('#sExportCsv', root).onclick = () => {
-        const rows = [['date', 'type', 'metal', 'grams', 'tola', 'amount', 'making_pct', 'making_rs', 'sdf_pct', 'sdf_rs', 'metal_value', 'form', 'dealer', 'note']];
+        const rows = [['date', 'type', 'metal', 'grams', 'tola', 'amount', 'making_pct', 'making_rs', 'sdf_pct', 'sdf_rs', 'metal_value', 'form', 'purity', 'buyback_pct', 'bill', 'dealer', 'note']];
         for (const t of sortedTxns()) {
           const b = txnBreakdown(t);
-          rows.push([t.date, t.type, t.metal, t.grams.toFixed(3), (t.grams / TOLA).toFixed(4), t.amount, t.makingPct ?? '', b.making.toFixed(2), t.sdfPct ?? '', b.sdf.toFixed(2), b.metal.toFixed(2), t.form || '', t.dealer || '', t.note || '']);
+          rows.push([t.date, t.type, t.metal, t.grams.toFixed(3), (t.grams / TOLA).toFixed(4), t.amount, t.makingPct ?? '', b.making.toFixed(2), t.sdfPct ?? '', b.sdf.toFixed(2), b.metal.toFixed(2), t.form || '', t.purity || '', t.type === 'buy' ? buybackOf(t) : '', t.bill || '', t.dealer || '', t.note || '']);
         }
         download(`stack-transactions-${todayNPT()}.csv`, rows.map(r => r.map(c => /[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : c).join(',')).join('\n'), 'text/csv');
       };
