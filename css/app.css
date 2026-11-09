@@ -569,3 +569,13 @@ input[type="range"] { accent-color: var(--accent); }
 .bt-after { margin-top: 16px; padding-top: 6px; }
 .bt-after > .label { margin-bottom: 2px; }
 .notice.buy-nudge { margin-bottom: 32px; background: rgba(91, 127, 94, 0.12); }
+
+/* new-version bar */
+.update-bar {
+  position: fixed; z-index: 55; left: 50%; transform: translateX(-50%);
+  bottom: calc(92px + var(--safe-b)); width: max-content; max-width: calc(100vw - 40px);
+  display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-radius: var(--radius);
+  background: #45413C; color: #FCFBF8; font-size: 14px; transition: var(--ease);
+}
+.update-bar b { color: var(--accent); font-weight: 500; }
+@media (min-width: 1024px) { .update-bar { bottom: 28px; left: calc(50% + var(--side) / 2); } }

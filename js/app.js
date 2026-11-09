@@ -4,6 +4,7 @@
 (function () {
   'use strict';
 
+  const APP_VERSION = '2026.11.09';  // shown in Settings; bump with each release
   const TOLA = 11.6638038;          // grams in one tola
   const OZT = 31.1034768;           // grams in one troy ounce
   const KEY = 'stack.v1';
@@ -1887,7 +1888,7 @@
 
       <div class="form-group mt"><button class="field action danger" id="sErase">${cloudUser ? 'Reset everything on all devices' : 'Erase all data on this device'}</button></div>
       ${cloudUser ? '<div class="form-caption">Deletes every purchase and setting from your Google account and every device signed in to it, for a fresh start. Export a backup first if you might want it later.</div>' : ''}
-      <p class="footer-note">Stack · rates from FENEGOSIDA via a scheduled GitHub Action.<br>1 tola = 11.6638 g · 1 troy oz = 31.1035 g</p>`;
+      <p class="footer-note">Stack · version ${APP_VERSION} · rates from FENEGOSIDA via a scheduled GitHub Action.<br>1 tola = 11.6638 g · 1 troy oz = 31.1035 g</p>`;
 
     openSheet(html, root => {
       const set = (sel, v) => $$(sel + ' button', root).forEach(b => b.classList.toggle('on', b.dataset.v === v));
@@ -2025,8 +2026,29 @@
   refreshMarket();
   if (state.settings.gist.token) gistSync().then(r => { if (r === 'pulled') { render(); toast('Synced from GitHub'); } }).catch(() => {});
 
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Updates: check for a new service worker on launch and whenever the app comes back to the
+  // screen. When a new version takes over, reload straight away if the app was only just opened,
+  // otherwise offer a one-tap refresh so nothing being typed is lost.
+  const bootedAt = Date.now();
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      if (Date.now() - bootedAt < 15000 && $('#sheet').hidden) { reloading = true; location.reload(); return; }
+      showUpdateBar();
+    });
+  }
+  function showUpdateBar() {
+    if ($('#updateBar')) return;
+    const bar = document.createElement('button');
+    bar.id = 'updateBar'; bar.className = 'update-bar';
+    bar.innerHTML = '<span>A new version of Stack is ready</span><b>Refresh</b>';
+    bar.onclick = () => location.reload();
+    document.body.appendChild(bar);
   }
 
   if (window.StackCloud) initCloud();
