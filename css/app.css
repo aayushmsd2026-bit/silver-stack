@@ -551,3 +551,21 @@ input[type="range"] { accent-color: var(--accent); }
 
 .nav-install { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; margin-bottom: 10px; border-radius: var(--radius-sm); color: var(--text-2); font-size: 14px; font-weight: 500; transition: var(--ease); }
 .nav-install:hover { background: var(--accent-soft); color: var(--text); }
+
+/* buy more today */
+.buy-today .bt-signal { margin-top: 16px; }
+.sig { border-radius: var(--radius); padding: 16px 18px; background: var(--inset); }
+.sig-tag { display: inline-block; font-weight: 700; font-size: 13px; padding: 4px 12px; border-radius: var(--radius-sm); background: var(--card); }
+.sig-go .sig-tag { background: rgba(91, 127, 94, 0.16); color: var(--up); }
+.sig-ok .sig-tag { background: rgba(91, 127, 94, 0.10); color: var(--up); }
+.sig-wait .sig-tag { background: rgba(176, 87, 63, 0.12); color: var(--down); }
+.sig-line { margin-top: 10px; font-weight: 500; line-height: 1.5; }
+.sig-why { margin: 12px 0 0; padding-left: 18px; color: var(--text-2); font-size: 13px; line-height: 1.7; }
+.bt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 6px; }
+.bt-chips button { padding: 6px 12px; border-radius: var(--radius-sm); background: var(--inset); font-size: 13px; font-weight: 500; color: var(--text-2); transition: var(--ease); }
+.bt-chips button:hover { color: var(--text); }
+.bt-chips button.on { background: var(--accent); color: var(--text); }
+.bt-total { display: flex; flex-direction: column; gap: 2px; margin: 14px 0 6px; }
+.bt-after { margin-top: 16px; padding-top: 6px; }
+.bt-after > .label { margin-bottom: 2px; }
+.notice.buy-nudge { margin-bottom: 32px; background: rgba(91, 127, 94, 0.12); }

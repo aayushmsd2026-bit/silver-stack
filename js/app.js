@@ -858,6 +858,7 @@
     html += installBanner();
     html += alertsHtml();
     html += dupesHtml();
+    html += buyNudgeHtml();
 
     let hero;
     if (!P.any) {
@@ -927,8 +928,8 @@
     }
 
     html += layout(
-      [[1, hero], [2, rates], [5, holdings], [6, recent]],
-      [[3, ratioCard], [4, glanceHtml(P)], [7, snapshotHtml()], [8, goalsHtml(P)]],
+      [[1, hero], [2, rates], [3, buyTodayHtml()], [6, holdings], [7, recent]],
+      [[4, ratioCard], [5, glanceHtml(P)], [8, snapshotHtml()], [9, goalsHtml(P)]],
     );
 
     html += backupNudge();
@@ -964,6 +965,7 @@
     const hs = $('#homeSnooze', el); if (hs) hs.onclick = () => { try { localStorage.setItem('stack.signinSnooze', Date.now() + 7 * 864e5); } catch (_) {} renderHome(); };
     const gl = $('#homeGoals', el); if (gl) gl.onclick = () => openSettings('goals');
     bindDupes(el);
+    bindBuyToday(el);
     const hi = $('#homeInstall', el); if (hi) hi.onclick = installFlow;
     const hx = $('#installSnooze', el); if (hx) hx.onclick = () => { try { localStorage.setItem('stack.installSnooze', Date.now() + 14 * 864e5); } catch (_) {} renderHome(); };
   }
@@ -1043,6 +1045,138 @@
     const last = state.settings.lastExport;
     if (last && Date.now() - new Date(last).getTime() < 30 * 864e5) return '';
     return `<div class="notice info mt"><span>☁️</span><div>Your stack lives only in this browser. <button class="text-btn" id="nudgeExport">Sign in with Google</button> to back it up and sync it across your devices.</div></div>`;
+  }
+
+  // ------------------------------------------------------------------ BUY MORE TODAY
+  /** How today's rate compares with recent FENEGOSIDA history. Past prices only — not a forecast. */
+  function buySignal(m) {
+    const rows = hist(m), cur = rate(m);
+    if (!cur || rows.length < 15) return null;
+    const last = rows[rows.length - 1][0];
+    const win = d => rows.filter(([x]) => daysBetween(x, last) <= d).map(r => r[1]);
+    const w30 = win(31), w90 = win(91), w365 = win(366);
+    const lo90 = Math.min(...w90), hi90 = Math.max(...w90);
+    const avg30 = w30.reduce((a, b) => a + b, 0) / w30.length;
+    const below = w90.filter(v => v < cur).length / w90.length;   // share of recent days that were cheaper
+    let streak = 0;
+    for (let i = rows.length - 1; i > 0 && rows[i][1] < rows[i - 1][1]; i--) streak++;
+    const level = cur <= lo90 ? 'best' : below <= 0.15 ? 'great' : cur < avg30 && below <= 0.4 ? 'good' : below >= 0.85 ? 'pricey' : 'fair';
+    return { cur, lo90, hi90, avg30, below, streak, hi365: Math.max(...w365), level, pos: (cur - lo90) / ((hi90 - lo90) || 1) };
+  }
+
+  const SIGNAL = {
+    best:   { tag: 'Best time to buy', tone: 'go',   line: m => `${NAME[m]} is at its lowest price in 3 months.` },
+    great:  { tag: 'Great time to buy', tone: 'go',  line: (m, s) => `Cheaper than ${Math.round((1 - s.below) * 100)}% of days in the last 3 months.` },
+    good:   { tag: 'Good time to buy', tone: 'ok',   line: () => 'Below its 30-day average and in the cheaper part of its recent range.' },
+    fair:   { tag: 'Fair price', tone: 'neutral',    line: () => 'In the middle of its recent range. Fine for regular, steady buying.' },
+    pricey: { tag: 'Pricey today', tone: 'wait',     line: () => 'Near the top of its 3-month range. Consider waiting for a dip, or buying a smaller amount.' },
+  };
+
+  function signalReasons(m, s, grams) {
+    const out = [`${pct(s.cur / s.avg30 - 1, 1)} vs its 30-day average (${money(s.avg30, { raw: true })})`,
+      `${pct(s.cur / s.hi365 - 1, 1)} from its 52-week high`];
+    if (s.streak >= 2) out.push(`Down ${s.streak} rate updates in a row`);
+    const p = position(m);
+    if (p.avgTola && grams > 0) {
+      // Compare what this lot really costs per tola (making charge + SDF included) with the average.
+      const eff = estimateBuy(m, grams).total / grams * TOLA;
+      out.push(eff < p.avgTola
+        ? `With charges, ${weight(grams, { unit: 'g', noKg: true })} costs ${money(eff, { raw: true })}/tola, below your average of ${money(p.avgTola, { raw: true })}, so it lowers your average`
+        : `With charges, ${weight(grams, { unit: 'g', noKg: true })} costs ${money(eff, { raw: true })}/tola, above your average of ${money(p.avgTola, { raw: true })}, so it nudges your average up${s.cur < p.avgTola ? ' (a larger lot without making charge would lower it)' : ''}`);
+    }
+    if (m === 'silver') {
+      const ii = market.prices?.intl, g = rate('gold');
+      const sig = ii?.xau && ii?.xag ? ii.xau / ii.xag : g ? g / s.cur : null;
+      if (sig && ratioZone(sig).pos === 'silver') out.push('Gold ÷ silver ratio says silver is cheap relative to gold');
+    }
+    return out;
+  }
+
+  /** Home banner when today is a standout day to buy. */
+  function buyNudgeHtml() {
+    for (const m of METALS) {
+      const s = buySignal(m);
+      if (s && (s.level === 'best' || s.level === 'great')) {
+        return `<div class="notice buy-nudge fade-in"><span>🟢</span><div><b>${SIGNAL[s.level].tag}: ${NAME[m].toLowerCase()}.</b> ${SIGNAL[s.level].line(m, s)} <button class="text-btn" data-go="${m}">See ${NAME[m].toLowerCase()}</button></div></div>`;
+      }
+    }
+    return '';
+  }
+
+  /** Estimated bill for buying `grams` today, using the same charge rules as logging a purchase. */
+  function estimateBuy(m, grams) {
+    const S = state.settings, pg = perGram(m) || 0;
+    const metalVal = grams * pg;
+    const mk = grams > 0 && grams < S[m].makingThreshold ? S[m].makingPct / 100 : 0;
+    const sd = S[m].sdfPct / 100;
+    const total = S.chargeBasis === 'ontop' ? metalVal * (1 + mk) * (1 + sd) : metalVal / Math.max(0.01, 1 - mk - sd);
+    const b = breakdown(total, mk * 100, sd * 100, S.chargeBasis);
+    return { total, ...b, makingPct: mk * 100, sdfPct: sd * 100 };
+  }
+
+  function buyTodayHtml(fixedMetal) {
+    if (!market.prices) return '';
+    return `<div class="section-title"><span>Buy more today</span></div>
+      <div class="card buy-today" data-fixed="${fixedMetal || ''}">
+        ${fixedMetal ? '' : `<div class="seg full bt-metal"><button data-v="silver" class="on">Silver</button><button data-v="gold">Gold</button></div>`}
+        <div class="bt-signal"></div>
+        <div class="form-group mt">
+          <div class="field"><label for="btGrams">If I buy</label><input class="bt-grams" id="btGrams" inputmode="decimal" value="10"><span class="unit">g</span></div>
+        </div>
+        <div class="bt-chips">${[['10 g', 10], ['1 tola', TOLA], ['50 g', 50], ['100 g', 100], ['500 g', 500], ['1 kg', 1000]].map(([l, g]) => `<button data-g="${g}">${l}</button>`).join('')}</div>
+        <div class="bt-out"></div>
+        <button class="btn block mt bt-log">Log this purchase</button>
+        <div class="hint mt-s">Signals compare today's FENEGOSIDA rate with recent history. They are not a prediction or financial advice.</div>
+      </div>`;
+  }
+
+  function bindBuyToday(root) {
+    const card = $('.buy-today', root);
+    if (!card) return;
+    let m = card.dataset.fixed || 'silver';
+    const input = $('.bt-grams', card);
+    const draw = () => {
+      const s = buySignal(m);
+      $('.bt-signal', card).innerHTML = s ? `
+        <div class="sig sig-${SIGNAL[s.level].tone}">
+          <div class="row"><span class="sig-tag">${SIGNAL[s.level].tag}</span><span class="small muted num">${money(s.cur, { raw: true })}/tola</span></div>
+          <div class="sig-line">${SIGNAL[s.level].line(m, s)}</div>
+          <div class="range mt-s"><span class="small muted num">${Charts.compact(s.lo90)}</span><div class="range-track"><i style="left:${(s.pos * 100).toFixed(1)}%"></i></div><span class="small muted num">${Charts.compact(s.hi90)}</span></div>
+          <div class="small muted" style="margin-top:4px">Where today sits in the 3-month low–high range</div>
+          <ul class="sig-why">${signalReasons(m, s, num(input.value)).map(r => `<li>${r}</li>`).join('')}</ul>
+        </div>` : `<div class="hint">A buy signal appears once a few weeks of ${m} prices are collected.</div>`;
+
+      const g = num(input.value);
+      const est = estimateBuy(m, g);
+      const p = position(m);
+      const newGrams = p.grams + g, newCost = p.cost + est.total;
+      const newAvg = newGrams ? newCost / newGrams * TOLA : null;
+      const bbPct = state.settings[m].buybackPct || 0;
+      const newBbPct = newGrams ? (p.buybackPct * p.grams + bbPct * g) / newGrams : bbPct;
+      const newSellBE = newAvg ? newAvg / (1 - newBbPct / 100) : null;
+      $$('.bt-chips button', card).forEach(b => b.classList.toggle('on', Math.abs(+b.dataset.g - g) < 0.01));
+      $('.bt-out', card).innerHTML = g > 0 ? `
+        <div class="bt-total"><span class="label">Estimated bill for ${weight(g, { unit: 'g', noKg: g < 1000 })}${g >= 5 ? ` (${(g / TOLA).toFixed(2)} tola)` : ''}</span><span class="mid num">${money(est.total, { raw: true })}</span></div>
+        <div class="kv"><span class="k">Metal value</span><span class="v num">${money(est.metal, { raw: true })}</span></div>
+        <div class="kv"><span class="k">Making charge${est.makingPct ? ` (${est.makingPct}%)` : ''}</span><span class="v num">${est.makingPct ? money(est.making, { raw: true }) : `None (${state.settings[m].makingThreshold} g or more)`}</span></div>
+        <div class="kv"><span class="k">SDF (${est.sdfPct}%)</span><span class="v num">${money(est.sdf, { raw: true })}</span></div>
+        ${p.grams ? `
+        <div class="bt-after">
+          <div class="label">After this purchase</div>
+          <div class="kv"><span class="k">Your ${m}</span><span class="v num">${weight(p.grams)} → ${weight(newGrams)}</span></div>
+          <div class="kv"><span class="k">Average cost / tola</span><span class="v num">${money(p.avgTola, { raw: true })} → <span class="${cls(p.avgTola - newAvg)}">${money(newAvg, { raw: true })}</span></span></div>
+          ${bbPct || p.buybackPct ? `<div class="kv"><span class="k">Sell-back break-even</span><span class="v num">${money(p.sellBreakEven, { raw: true })} → ${money(newSellBE, { raw: true })}</span></div>` : ''}
+        </div>` : ''}
+        ${est.makingPct && g < state.settings[m].makingThreshold ? `<div class="hint mt-s">Lots of ${state.settings[m].makingThreshold} g or more skip the ${state.settings[m].makingPct}% making charge (${money(est.making, { raw: true })} here).</div>` : ''}` : '<div class="hint mt">Enter a weight to see the estimate.</div>';
+    };
+    $$('.bt-metal button', card).forEach(b => b.onclick = () => { m = b.dataset.v; $$('.bt-metal button', card).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+    $$('.bt-chips button', card).forEach(b => b.onclick = () => { input.value = +(+b.dataset.g).toFixed(3); draw(); });
+    input.oninput = draw;
+    $('.bt-log', card).onclick = () => {
+      const g = num(input.value);
+      openTxnSheet(null, { metal: m, grams: g > 0 ? g : '', amount: g > 0 ? Math.round(estimateBuy(m, g).total) : '' });
+    };
+    draw();
   }
 
   // ------------------------------------------------------------------ METAL VIEW
@@ -1136,7 +1270,7 @@
         <div class="list">${sortedTxns(m).reverse().map(txnRow).join('')}</div>`;
     }
 
-    html += layout([[1, chartB], [5, posB], [6, txnB]], [[2, ratesB], [3, perfB], [4, intlB]]);
+    html += layout([[1, chartB], [6, posB], [7, txnB]], [[2, ratesB], [3, buyTodayHtml(m)], [4, perfB], [5, intlB]]);
     html += `<p class="footer-note">${sourceLine()}</p>`;
     el.innerHTML = html;
 
@@ -1168,6 +1302,7 @@
     draw();
     bindRange(el, m, () => { renderMetal(m); });
     $(`#btnRef-${m}`, el).onclick = () => refreshMarket(true);
+    bindBuyToday(el);
     $$('[data-add]', el).forEach(b => b.onclick = () => openTxnSheet(null, { metal: b.dataset.add }));
     bindTxnRows(el);
   }
@@ -1544,7 +1679,7 @@
     const S = state.settings;
     const t = txn ? { ...txn } : {
       id: uid(), type: preset.type || 'buy', metal: preset.metal || (currentView === 'gold' ? 'gold' : 'silver'),
-      date: todayNPT(), grams: '', amount: '', form: 'bar', dealer: '', note: '',
+      date: todayNPT(), grams: preset.grams || '', amount: preset.amount || '', form: 'bar', dealer: '', note: '',
     };
     let unit = 'g';
     let makingOn = t.makingPct == null ? null : t.makingPct > 0;   // null = automatic by weight
