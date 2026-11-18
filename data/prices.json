@@ -1,20 +1,24 @@
 {
- "source": "FENEGOSIDA",
- "date": "2026-11-18",
+ "source": "Ashesh (FENEGOSIDA rate)",
+ "date": "2026-11-19",
  "gold": {
-  "tola": 260900.0,
-  "g10": 223680.0,
-  "prevTola": 267200.0
+  "tola": 260900,
+  "g10": 223680,
+  "prevTola": 260900.0
  },
  "silver": {
-  "tola": 3380.0,
-  "g10": 2898.0,
-  "prevTola": 3490.0
+  "tola": 3380,
+  "g10": 2898,
+  "prevTola": 3380.0
  },
  "intl": {
-  "xau": 3746.949951,
-  "xag": 44.985001,
-  "usdnpr": 149.86
+  "xau": 3732.070068,
+  "xag": 44.970001,
+  "usdnpr": 149.81
  },
- "fetchedAt": "2026-11-18T17:20:32+00:00"
+ "fetchedAt": "2026-11-18T19:15:59+00:00",
+ "warnings": [
+  "fenegosida: HTTP Error 522: <none>",
+  "hamropatro: HTTP Error 403: Forbidden"
+ ]
 }
