@@ -223,6 +223,9 @@
     const r = rate(metal), pr = prevRate(metal);
     p.dayChange = r && pr ? p.grams * (r - pr) / TOLA : null;
     p.totalReturn = p.value != null ? p.value + p.received - p.invested : null;
+    // Money-weighted annual return for this metal alone: at market value, and at the dealer's buyback price
+    p.xirr = p.value != null ? xirr(p.flows, p.value) : null;
+    p.xirrSellBack = p.buybackValue != null && p.buybackPct ? xirr(p.flows, p.buybackValue) : null;
     return p;
   }
 
@@ -247,7 +250,8 @@
 
   /** Annualised money-weighted return. flows: [[date, amount]]; terminal value counted today. */
   function xirr(flows, terminal) {
-    if (!flows.length || !terminal) return null;
+    if (!flows.length || terminal == null) return null;
+    flows = flows.slice().sort((a, b) => a[0].localeCompare(b[0]));
     const today = todayNPT();
     const cf = [...flows.map(([d, a]) => [daysBetween(flows[0][0], d) / 365, a]), [daysBetween(flows[0][0], today) / 365, terminal]];
     if (cf[cf.length - 1][0] < 30 / 365) return null; // too short to annualise meaningfully
@@ -807,7 +811,8 @@
         </div>
       </div>
       <div class="kv mt-s"><span class="k">Making charge + SDF paid</span><span class="v num">${money(P.making + P.sdf)}</span></div>
-      <div class="kv"><span class="k">Annualised return</span><span class="v num ${cls(P.xirr)}">${P.xirr != null ? pct(P.xirr, 1) : '—'}</span></div>
+      <div class="kv"><span class="k">Annualised return (XIRR)</span><span class="v num ${cls(P.xirr)}">${P.xirr != null ? pct(P.xirr, 1) : '—'}</span></div>
+      ${METALS.filter(m => P[m].buys).map(m => `<div class="kv"><span class="k">&nbsp;&nbsp;<span class="metal-dot ${m}"></span> ${NAME[m]} XIRR</span><span class="v num ${cls(P[m].xirr)}">${P[m].xirr != null ? pct(P[m].xirr, 1) : '—'}</span></div>`).join('')}
       ${P.realized ? `<div class="kv"><span class="k">Realised P&amp;L</span><span class="v num ${cls(P.realized)}">${money(P.realized, { sign: true })}</span></div>` : ''}
     </div>`;
   }
@@ -1254,6 +1259,8 @@
           <div class="kv"><span class="k">Market value</span><span class="v num">${money(p.value)}</span></div>
           <div class="kv"><span class="k">Cost basis (incl. charges)</span><span class="v num">${money(p.cost)}</span></div>
           <div class="kv"><span class="k">Unrealised P&amp;L</span><span class="v num ${cls(p.unrealized)}">${money(p.unrealized, { sign: true })} · ${pct(p.unrealizedPct)}</span></div>
+          <div class="kv"><span class="k">Annualised return (XIRR)</span><span class="v num ${cls(p.xirr)}">${p.xirr != null ? pct(p.xirr, 1) + ' a year' : '<span class="muted small">needs 30+ days</span>'}</span></div>
+          ${p.xirrSellBack != null ? `<div class="kv"><span class="k">XIRR if sold back today</span><span class="v num ${cls(p.xirrSellBack)}">${pct(p.xirrSellBack, 1)} a year</span></div>` : ''}
           ${p.dayChange != null ? `<div class="kv"><span class="k">Today</span><span class="v num ${cls(p.dayChange)}">${money(p.dayChange, { sign: true })}</span></div>` : ''}
           <div class="kv"><span class="k">Average cost / tola</span><span class="v num">${money(p.avgTola, { raw: true })}</span></div>
           <div class="kv"><span class="k">Average metal-only cost / tola</span><span class="v num">${money(p.avgMetalTola, { raw: true })}</span></div>
@@ -1472,7 +1479,7 @@
     html += `<div class="stat-grid four fade-in top-row">
       <div class="stat"><div class="label">Total invested</div><div class="v num">${money(P.invested)}</div><div class="s muted">${state.txns.filter(t => t.type === 'buy').length} purchases</div></div>
       <div class="stat"><div class="label">Total return</div><div class="v num ${cls(totalReturn)}">${money(totalReturn, { sign: true })}</div><div class="s ${cls(totalReturn)}">${pct(P.invested ? totalReturn / P.invested : null)}</div></div>
-      <div class="stat"><div class="label">Annualised (XIRR)</div><div class="v num ${cls(P.xirr)}">${P.xirr != null ? pct(P.xirr, 1) : '—'}</div><div class="s muted">${P.xirr != null ? 'money-weighted' : 'needs 30+ days'}</div></div>
+      <div class="stat"><div class="label">Annualised (XIRR)</div><div class="v num ${cls(P.xirr)}">${P.xirr != null ? pct(P.xirr, 1) : '—'}</div><div class="s muted">${P.xirr != null ? METALS.filter(m => P[m].buys).map(m => `${NAME[m]} <span class="${cls(P[m].xirr)}">${P[m].xirr != null ? pct(P[m].xirr, 1) : '—'}</span>`).join(' · ') : 'needs 30+ days'}</div></div>
       <div class="stat"><div class="label">Stacking for</div><div class="v num">${days >= 365 ? (days / 365).toFixed(1) + ' yrs' : days + ' days'}</div><div class="s muted">since ${fmtDate(P.first)}</div></div>
     </div>`;
 
