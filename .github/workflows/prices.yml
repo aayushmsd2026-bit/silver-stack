@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["scripts/fetch_prices.py", ".github/workflows/prices.yml"]
+    paths: ["scripts/fetch_prices.py", "scripts/fetch_macro.py", ".github/workflows/prices.yml"]
 
 permissions:
   contents: write
@@ -27,6 +27,9 @@ jobs:
           python-version: "3.12"
       - name: Fetch rates
         run: python scripts/fetch_prices.py
+      - name: Fetch Fed & macro data (refreshes every 6 h)
+        continue-on-error: true
+        run: python scripts/fetch_macro.py
       - name: Commit if changed
         run: |
           if [ -z "$(git status --porcelain -- data)" ]; then

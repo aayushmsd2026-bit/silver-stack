@@ -17,6 +17,7 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/fed.css">
 </head>
 <body>
   <div id="app">
@@ -32,6 +33,7 @@
       <section class="view" id="view-gold" data-title="Gold" hidden></section>
       <section class="view" id="view-ratio" data-title="Ratio" hidden></section>
       <section class="view" id="view-insights" data-title="Insights" hidden></section>
+      <section class="view" id="view-fed" data-title="Fed &amp; Silver" hidden></section>
     </main>
 
     <button class="fab" id="fab" aria-label="Add purchase">
@@ -59,6 +61,10 @@
       <button class="tab" data-view="insights" aria-label="Insights">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
         <span>Insights</span>
+      </button>
+      <button class="tab" data-view="fed" aria-label="Fed rates and silver">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9.5 12 4l9 5.5M5 10v8M9.7 10v8M14.3 10v8M19 10v8M3 20.5h18"/></svg>
+        <span>Fed</span>
       </button>
       <button class="btn nav-add" id="navAdd">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add purchase</span>

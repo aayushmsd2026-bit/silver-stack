@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2026.11.09';  // shown in Settings; bump with each release
+  const APP_VERSION = '2026.11.22';  // shown in Settings; bump with each release
   const TOLA = 11.6638038;          // grams in one tola
   const OZT = 31.1034768;           // grams in one troy ounce
   const KEY = 'stack.v1';
@@ -1231,7 +1231,7 @@
         <div class="kv"><span class="k">Spot in NPR per tola</span><span class="v num">${money(ii.implied, { raw: true })}</span></div>
         ${ii.premium != null ? `<div class="kv"><span class="k">Nepal premium over spot</span><span class="v num">${pct(ii.premium, 1)}</span></div>` : ''}
         <div class="hint mt-s">The premium is mostly customs duty and local costs. When it widens, Nepal prices are rich relative to the world market.</div>
-      </div>`;
+      </div>${m === 'silver' ? `<a class="card tight fed-link" href="#fed" data-go="fed"><div><div class="label">Fed &amp; Silver</div><div style="font-weight:500">How US rate decisions move your price</div><div class="small muted">Live Fed outlook, next-meeting simulator and history.</div></div><span aria-hidden="true">→</span></a>` : ''}`;
     }
 
     // Position
@@ -1303,6 +1303,7 @@
     draw();
     bindRange(el, m, () => { renderMetal(m); });
     $(`#btnRef-${m}`, el).onclick = () => refreshMarket(true);
+    $$('[data-go]', el).forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.go); });
     bindBuyToday(el);
     $$('[data-add]', el).forEach(b => b.onclick = () => openTxnSheet(null, { metal: b.dataset.add }));
     bindTxnRows(el);
@@ -1982,7 +1983,27 @@
   }
 
   // ------------------------------------------------------------------ NAV & RENDER
-  const RENDER = { home: renderHome, silver: () => renderMetal('silver'), gold: () => renderMetal('gold'), ratio: renderRatio, insights: renderInsights };
+  // Fed tab: its code and Chart.js load only the first time it opens.
+  let fedLoading = null;
+  function loadScript(src) {
+    return new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = rej; document.head.appendChild(e); });
+  }
+  function renderFed() {
+    const el = $('#view-fed');
+    const ctx = {
+      head, icon: ICON, toast, prices: market.prices, history: market.history, txns: state.txns,
+      addPurchase: metal => openTxnSheet(null, { metal }), refresh: () => refreshMarket(true),
+    };
+    if (window.FedView) return window.FedView.render(el, ctx);
+    el.innerHTML = head('Fed &amp; Silver', 'US rates → Nepal price') + '<div class="card chart-empty" style="height:200px">Loading…</div>';
+    fedLoading = fedLoading || loadScript('js/vendor/chart.umd.min.js')
+      .then(() => loadScript('js/vendor/chartjs-plugin-annotation.min.js'))
+      .then(() => loadScript('js/fed.js'));
+    fedLoading.then(() => { if (currentView === 'fed') renderFed(); })
+      .catch(() => { fedLoading = null; el.innerHTML = head('Fed &amp; Silver', 'US rates → Nepal price') + '<div class="card empty"><h2>Could not load</h2><p>Check your connection and open the tab again.</p></div>'; });
+  }
+
+  const RENDER = { home: renderHome, silver: () => renderMetal('silver'), gold: () => renderMetal('gold'), ratio: renderRatio, insights: renderInsights, fed: renderFed };
 
   function go(view, opts = {}) {
     if (!RENDER[view]) view = 'home';

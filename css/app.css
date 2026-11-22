@@ -267,7 +267,7 @@ button.list-item:hover { background: var(--accent-soft); }
 /* ---------------------------------------------------------------- tab bar */
 .tabbar {
   position: fixed; inset: auto 0 0 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   padding: 8px max(10px, calc((100vw - 640px) / 2)) calc(8px + var(--safe-b));
   background: var(--glass);
   -webkit-backdrop-filter: blur(18px);
@@ -579,3 +579,8 @@ input[type="range"] { accent-color: var(--accent); }
 }
 .update-bar b { color: var(--accent); font-weight: 500; }
 @media (min-width: 1024px) { .update-bar { bottom: 28px; left: calc(50% + var(--side) / 2); } }
+
+/* link card to the Fed rates & silver tracker (fed/) */
+.fed-link { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; text-decoration: none; color: var(--text); transition: var(--ease); }
+.fed-link:hover { background: var(--accent-soft); }
+.fed-link > span { font-size: 20px; color: var(--text-2); }
