@@ -579,3 +579,8 @@ input[type="range"] { accent-color: var(--accent); }
 }
 .update-bar b { color: var(--accent); font-weight: 500; }
 @media (min-width: 1024px) { .update-bar { bottom: 28px; left: calc(50% + var(--side) / 2); } }
+
+/* link card to the Fed rates & silver tracker (fed/) */
+.fed-link { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; text-decoration: none; color: var(--text); transition: var(--ease); }
+.fed-link:hover { background: var(--accent-soft); }
+.fed-link > span { font-size: 20px; color: var(--text-2); }

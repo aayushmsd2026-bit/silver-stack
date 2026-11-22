@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Fed Rates &amp; Silver Buying Tracker (Nepal Edition)</title>
+  <meta name="description" content="How US Federal Reserve rate decisions flow through to silver prices in Nepal, with a scenario simulator, history chart and DCA log.">
+  <meta name="theme-color" content="#0F1B2D">
+  <link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try { const t = localStorage.getItem('fed.theme'); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="back" href="../" aria-label="Back to Stack">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Stack</span>
+      </a>
+      <nav class="jump" aria-label="Sections">
+        <a href="#chain">Chain</a><a href="#sim">Simulator</a><a href="#history">History</a><a href="#planner">Planner</a>
+      </nav>
+      <button class="icon-btn" id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- 1. Header & executive summary -->
+    <section class="hero">
+      <p class="eyebrow">Nepal Edition · Educational tracker</p>
+      <h1>Fed Rates &amp; Silver Buying Tracker</h1>
+      <p class="lede">How a decision in Washington reaches the silver counter in New Road — and what it may mean for your next tola.</p>
+
+      <div class="kpis" id="kpis">
+        <div class="kpi"><span class="k">Fed funds target</span><span class="v mono" id="kpiFed">—</span><span class="s" id="kpiFedNote">&nbsp;</span></div>
+        <div class="kpi"><span class="k">Silver spot (XAG)</span><span class="v mono" id="kpiXag">—</span><span class="s" id="kpiXagNote">&nbsp;</span></div>
+        <div class="kpi"><span class="k">USD → NPR</span><span class="v mono" id="kpiFx">—</span><span class="s" id="kpiFxNote">&nbsp;</span></div>
+        <div class="kpi"><span class="k">FENEGOSIDA silver</span><span class="v mono" id="kpiTola">—</span><span class="s" id="kpiTolaNote">&nbsp;</span></div>
+      </div>
+
+      <div class="banner" id="banner">
+        <div class="banner-tag" id="bannerTag">Macro backdrop</div>
+        <div class="banner-body">
+          <h2 id="bannerTitle">Hawkish hold, hike risk into December</h2>
+          <p id="bannerText"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Cause-and-effect chain -->
+    <section id="chain" class="block">
+      <div class="block-head">
+        <h2>The cause-and-effect chain</h2>
+        <p>Tap a step to see why each link happens.</p>
+      </div>
+      <ol class="chain" id="chainList" role="tablist" aria-label="Transmission chain"></ol>
+      <div class="card explain" id="chainExplain" role="tabpanel" aria-live="polite"></div>
+    </section>
+
+    <!-- 3. Scenario simulator -->
+    <section id="sim" class="block">
+      <div class="block-head">
+        <h2>What to expect: December FOMC simulator</h2>
+        <p>Pick a scenario, adjust today's numbers, and see the likely direction of each link.</p>
+      </div>
+
+      <div class="scenarios" id="scenarioBtns" role="radiogroup" aria-label="Fed scenario"></div>
+
+      <div class="sim-grid">
+        <div class="card inputs">
+          <h3>Today's inputs</h3>
+          <label class="field">
+            <span>Global silver spot ($/oz)</span>
+            <input type="number" id="inSpot" step="0.01" min="1" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>USD → NPR exchange rate</span>
+            <input type="number" id="inFx" step="0.01" min="1" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>Local tax / premium markup (%)</span>
+            <input type="number" id="inMarkup" step="0.1" min="0" max="200" inputmode="decimal">
+            <small id="markupHint" class="hint"></small>
+          </label>
+          <label class="field">
+            <span>Market reaction strength <b id="intensityVal" class="mono">1.0×</b></span>
+            <input type="range" id="inIntensity" min="0.5" max="2" step="0.1" value="1">
+            <small class="hint">1.0× is a typical reaction. Raise it for a volatile week.</small>
+          </label>
+          <button class="btn ghost small" id="resetInputs" type="button">Reset to live rates</button>
+        </div>
+
+        <div class="results">
+          <div class="res-grid">
+            <div class="card res">
+              <span class="k">Global silver</span>
+              <span class="v mono" id="outSpot">—</span>
+              <span class="d" id="outSpotD"></span>
+            </div>
+            <div class="card res">
+              <span class="k">USD → NPR</span>
+              <span class="v mono" id="outFx">—</span>
+              <span class="d" id="outFxD"></span>
+            </div>
+            <div class="card res wide">
+              <span class="k">Estimated Nepal price per tola (11.664 g)</span>
+              <span class="v mono big" id="outTola">—</span>
+              <span class="d" id="outTolaD"></span>
+              <span class="s" id="out10g"></span>
+            </div>
+          </div>
+
+          <div class="card waterfall">
+            <h3>Where the NPR change comes from</h3>
+            <div class="wf" id="waterfall"></div>
+          </div>
+
+          <div class="card takeaway" id="takeaway">
+            <h3>Buyer's takeaway</h3>
+            <p id="takeawayText"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Historical chart -->
+    <section id="history" class="block">
+      <div class="block-head row">
+        <div>
+          <h2>Fed funds rate vs. silver, 2018–2026</h2>
+          <p>Quarterly averages. Shaded lines mark the turning points.</p>
+        </div>
+        <div class="seg" role="group" aria-label="Silver price unit">
+          <button type="button" class="active" data-unit="usd">USD / oz</button>
+          <button type="button" data-unit="npr">NPR / tola</button>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-box"><canvas id="histChart" aria-label="Fed funds rate and silver price chart" role="img"></canvas></div>
+        <p class="hint" id="chartNote"></p>
+      </div>
+      <div class="lessons" id="lessons"></div>
+    </section>
+
+    <!-- 5. Planner -->
+    <section id="planner" class="block">
+      <div class="block-head">
+        <h2>Personal buying planner</h2>
+        <p>A simple dollar-cost averaging log, saved in this browser only.</p>
+      </div>
+
+      <div class="plan-grid">
+        <div class="card">
+          <h3>Log a purchase</h3>
+          <form id="dcaForm" class="dca-form" autocomplete="off">
+            <label class="field"><span>Date</span><input type="date" id="fDate" required></label>
+            <div class="field-row">
+              <label class="field"><span>Weight</span><input type="number" id="fWeight" step="0.001" min="0.001" required inputmode="decimal"></label>
+              <label class="field"><span>Unit</span>
+                <select id="fUnit"><option value="tola">Tola</option><option value="g">Grams</option></select>
+              </label>
+            </div>
+            <label class="field"><span>Total price paid (NPR)</span><input type="number" id="fPrice" step="1" min="1" required inputmode="decimal"></label>
+            <label class="field"><span>Fed rate at time of purchase (%)</span><input type="text" id="fFed" placeholder="e.g. 3.75–4.00"></label>
+            <button class="btn" type="submit">Add to log</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Your average buy-in</h3>
+          <div class="dca-stats" id="dcaStats"></div>
+          <div class="table-wrap">
+            <table class="dca-table" id="dcaTable">
+              <thead><tr><th>Date</th><th>Weight</th><th>Paid</th><th>Per tola</th><th>Fed rate</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="dca-actions">
+            <button class="btn ghost small" id="dcaExport" type="button">Export CSV</button>
+            <button class="btn ghost small danger" id="dcaClear" type="button">Clear log</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card checklist-card">
+        <div class="row-between">
+          <h3>Pre-purchase checklist for FOMC weeks</h3>
+          <button class="btn ghost small" id="checkReset" type="button">Reset</button>
+        </div>
+        <ul class="checklist" id="checklist"></ul>
+        <div class="progress"><i id="checkBar"></i></div>
+        <p class="hint" id="checkStatus"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p><strong>Disclaimer.</strong> This simulator uses simplified, educational macro-economic correlations. Real markets often move against textbook relationships, especially around surprises, and Nepal's local rate also depends on customs duty, NRB policy and dealer premiums. It is a personal tracking tool, not financial advice. Always confirm the day's rate with FENEGOSIDA before buying.</p>
+    <p class="faint" id="dataStamp"></p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

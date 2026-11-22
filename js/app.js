@@ -1231,7 +1231,7 @@
         <div class="kv"><span class="k">Spot in NPR per tola</span><span class="v num">${money(ii.implied, { raw: true })}</span></div>
         ${ii.premium != null ? `<div class="kv"><span class="k">Nepal premium over spot</span><span class="v num">${pct(ii.premium, 1)}</span></div>` : ''}
         <div class="hint mt-s">The premium is mostly customs duty and local costs. When it widens, Nepal prices are rich relative to the world market.</div>
-      </div>`;
+      </div>${m === 'silver' ? `<a class="card tight fed-link" href="fed/"><div><div class="label">New</div><div style="font-weight:500">Fed rates &amp; silver tracker</div><div class="small muted">How US rate decisions reach the Nepal price, with a December FOMC simulator.</div></div><span aria-hidden="true">→</span></a>` : ''}`;
     }
 
     // Position
