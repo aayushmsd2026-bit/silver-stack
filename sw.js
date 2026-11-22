@@ -1,8 +1,8 @@
 /* Offline support: network-first for everything on this site, with the cache as the offline fallback.
    Requests revalidate with the server (cache: 'no-cache') so a new release shows up on the next
    launch instead of waiting out GitHub Pages' 10-minute browser cache. */
-const VERSION = 'stack-v11';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/charts.js', 'js/cloud.js', 'js/firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png'];
+const VERSION = 'stack-v12';
+const SHELL = ['./', 'index.html', 'css/app.css', 'css/fed.css', 'js/app.js', 'js/charts.js', 'js/fed.js', 'js/vendor/chart.umd.min.js', 'js/vendor/chartjs-plugin-annotation.min.js', 'js/cloud.js', 'js/firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION)

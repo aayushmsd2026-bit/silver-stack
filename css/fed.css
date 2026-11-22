@@ -1,0 +1,70 @@
+/* Fed & Silver tab. Built from the Stack design system in app.css:
+   same tokens, Sand cards on Cotton, no shadows or borders, DM Sans. Only layout lives here. */
+
+/* hero */
+.fed-hero { padding: 28px 24px 24px; }
+.fed-hero .big { margin-top: 6px; }
+.fed-next { text-align: right; }
+.fed-next .mid { margin-top: 4px; }
+.fed-hero .pill.up { color: var(--up); }
+.fed-hero .pill.down { color: var(--down); }
+.fed-summary { margin: 18px 0 0; color: var(--text-2); font-size: 15px; font-weight: 300; line-height: 1.75; max-width: 860px; }
+.fed-summary b { color: var(--text); font-weight: 500; }
+.fed-minis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+@media (min-width: 760px) { .fed-minis { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1200px) { .fed-minis { grid-template-columns: repeat(6, 1fr); } }
+.fed-minis .mini { min-width: 0; }
+.fed-minis .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* cause-and-effect chain */
+.fed-chain { display: grid; gap: 12px; }
+@media (min-width: 900px) { .fed-chain { grid-template-columns: minmax(280px, 380px) 1fr; align-items: start; } }
+.fed-chain .list-item.on { background: var(--accent-soft); }
+.fed-chain .list-item.on .li-icon { background: var(--accent); }
+.fed-chain .chev { color: var(--text-3); font-size: 20px; }
+.fed-chain .card h3 { margin-bottom: 8px; }
+.fed-h { font-size: 20px; font-weight: 500; line-height: 1.3; margin-bottom: 10px; }
+.fed-chain .card p { margin: 0 0 10px; }
+
+/* simulator */
+.fed-sim { display: grid; gap: 16px; }
+@media (min-width: 900px) { .fed-sim { grid-template-columns: minmax(300px, 380px) 1fr; align-items: start; } }
+#scenSeg button { position: relative; padding: 9px 6px; font-size: 14px; }
+.fed-base { display: block; font-size: 10px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); line-height: 1; margin-top: 2px; }
+#scenSeg button.on .fed-base { color: var(--text); opacity: .7; }
+.fed-sim .field input[type="range"] { width: 100%; padding: 0; }
+.fed-sim .field.col label.row { display: flex; }
+.fed-sim .form-caption .text-btn { font-size: 13px; }
+
+.fed-wf { display: flex; flex-direction: column; gap: 10px; }
+.wf-row { display: grid; grid-template-columns: 110px 1fr 86px; gap: 12px; align-items: center; font-size: 13px; color: var(--text-2); }
+.wf-row.total { color: var(--text); font-weight: 500; }
+.wf-row > .num { text-align: right; }
+.wf-track { position: relative; height: 8px; border-radius: 4px; background: var(--inset); }
+.wf-track::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--text-3); }
+.wf-track i { position: absolute; top: 0; bottom: 0; border-radius: 4px; transition: var(--ease); }
+
+.fed-take { display: block; font-size: 15px; }
+.fed-take.good { background: rgba(91, 127, 94, 0.12); }
+.fed-take.bad { background: rgba(176, 87, 63, 0.10); }
+.fed-take ul { margin: 10px 0 0; padding-left: 18px; color: var(--text-2); font-size: 14px; font-weight: 300; }
+.fed-take li + li { margin-top: 4px; }
+
+/* chart */
+.section-title .seg { font-size: 13px; }
+.fed-chart { position: relative; height: 340px; margin: 0 -6px; }
+@media (max-width: 620px) { .fed-chart { height: 280px; } }
+
+/* checklist */
+.fed-checks .field { align-items: flex-start; padding: 14px 18px; cursor: pointer; }
+.fed-checks input[type="checkbox"] { flex: none; width: 20px; height: 20px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); }
+.fed-checks .li-title, .fed-checks .li-sub { display: block; white-space: normal; }
+.fed-checks input:checked + .li-main .li-title { text-decoration: line-through; color: var(--text-3); }
+
+.fed-foot { max-width: 760px; margin-left: auto; margin-right: auto; }
+.fed-sim > *, .fed-chain > * { min-width: 0; }
+.fed-sim .field input[type="number"] { width: 0; }
+.fed-chain .li-title, .fed-chain .li-sub { display: block; }
+.fed-hero .big { white-space: nowrap; font-size: clamp(30px, 8.6vw, 42px); }
+@media (max-width: 420px) { .fed-next .mid { font-size: 22px; } .fed-next .small { max-width: 130px; margin-left: auto; } }
+.section-title .seg button { white-space: nowrap; padding: 7px 10px; }
